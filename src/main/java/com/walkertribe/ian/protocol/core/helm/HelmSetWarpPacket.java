@@ -1,48 +1,39 @@
 package com.walkertribe.ian.protocol.core.helm;
 
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
-import com.walkertribe.ian.protocol.core.ShipActionPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
+import com.walkertribe.ian.protocol.core.ValueIntPacket;
+import com.walkertribe.ian.protocol.core.ValueIntPacket.SubType;
 import com.walkertribe.ian.world.Artemis;
 
 /**
  * Set warp speed.
  * @author dhleong
  */
-public class HelmSetWarpPacket extends ShipActionPacket {
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.CLIENT, TYPE, TYPE_WARPSPEED,
-				new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return HelmSetWarpPacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new HelmSetWarpPacket(reader);
-			}
-		});
-	}
-
+@Packet(origin = Origin.CLIENT, type = CorePacketType.VALUE_INT, subtype = SubType.WARP)
+public class HelmSetWarpPacket extends ValueIntPacket {
 	/**
 	 * @param warp Value between 0 (no warp) and 4 (max warp)
 	 */
     public HelmSetWarpPacket(int warp) {
-        super(TYPE_WARPSPEED, warp);
+        super(warp);
 
         if (warp < 0 || warp > Artemis.MAX_WARP) {
-        	throw new IndexOutOfBoundsException("Warp speed out of range");
+        	throw new IllegalArgumentException("Warp speed out of range");
         }
     }
 
-    private HelmSetWarpPacket(PacketReader reader) {
-        super(TYPE_WARPSPEED, reader);
+    public HelmSetWarpPacket(PacketReader reader) {
+        super(reader);
+    }
+
+    /**
+     * Returns the desired warp factor, between 0 and 4 inclusive.
+     */
+    public int getWarpFactor() {
+    	return mArg;
     }
 
     @Override

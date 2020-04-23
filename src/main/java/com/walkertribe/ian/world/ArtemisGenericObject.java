@@ -3,9 +3,9 @@ package com.walkertribe.ian.world;
 import com.walkertribe.ian.enums.ObjectType;
 
 /**
- * There are many "generic" objects which are very similar in implementation.
- * They are all handled by this class. Specifically, the objects implemented by
- * this class are: mines, torpedoes, black holes and asteroids.
+ * There are some "generic" objects which are very similar in implementation.
+ * They are handled by this class. Specifically, the objects implemented by
+ * this class are: mines, black holes, and asteroids.
  * @author dhleong
  */
 public class ArtemisGenericObject extends BaseArtemisObject {
@@ -29,5 +29,18 @@ public class ArtemisGenericObject extends BaseArtemisObject {
     	}
 
     	mType = type;
+    }
+
+    @Override
+    public void updateFrom(ArtemisObject obj) {
+    	super.updateFrom(obj);
+
+    	if (obj instanceof ArtemisGenericObject) {
+    		ArtemisGenericObject cast = (ArtemisGenericObject) obj;
+
+    		if (cast.mType != null) {
+    			mType = cast.mType;
+    		}
+    	}
     }
 }

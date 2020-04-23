@@ -1,60 +1,43 @@
 package com.walkertribe.ian.protocol.core;
 
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
-import com.walkertribe.ian.protocol.BaseArtemisPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.SimpleEventPacket.SubType;
+import com.walkertribe.ian.util.Util;
 
 /**
  * "Toast" messages sent by the server.
  */
-public class GameMessagePacket extends BaseArtemisPacket {
-    private static final int TYPE = 0xf754c8fe;
-    private static final byte MSG_TYPE = 0x0a;
+@Packet(origin = Origin.SERVER, type = CorePacketType.SIMPLE_EVENT, subtype = SubType.GAME_MESSAGE)
+public class GameMessagePacket extends SimpleEventPacket {
+    private final CharSequence mMessage;
 
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.SERVER, TYPE, MSG_TYPE,
-				new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return GameMessagePacket.class;
-			}
+    public GameMessagePacket(CharSequence message) {
+        if (Util.isBlank(message)) {
+        	throw new IllegalArgumentException("You must provide a message");
+        }
 
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new GameMessagePacket(reader);
-			}
-		});
-	}
-
-    private final String mMessage;
-
-    private GameMessagePacket(PacketReader reader) {
-        super(ConnectionType.SERVER, TYPE);
-        reader.skip(4); // subtype
-        mMessage = reader.readString();
+        mMessage = message;
     }
 
-    public GameMessagePacket(String message) {
-        super(ConnectionType.SERVER, TYPE);
-        mMessage = message;
+    public GameMessagePacket(PacketReader reader) {
+        super(reader);
+        mMessage = reader.readString();
     }
 
     /**
      * The contents of the "toast" message.
      */
-    public String getMessage() {
+    public CharSequence getMessage() {
         return mMessage;
     }
 
 	@Override
 	protected void writePayload(PacketWriter writer) {
-		writer.writeInt(MSG_TYPE).writeString(mMessage);
+		super.writePayload(writer);
+		writer.writeString(mMessage);
 	}
 
 	@Override

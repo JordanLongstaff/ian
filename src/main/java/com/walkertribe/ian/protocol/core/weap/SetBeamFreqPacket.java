@@ -1,39 +1,23 @@
 package com.walkertribe.ian.protocol.core.weap;
 
 import com.walkertribe.ian.enums.BeamFrequency;
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
-import com.walkertribe.ian.protocol.core.ShipActionPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
+import com.walkertribe.ian.protocol.core.ValueIntPacket;
+import com.walkertribe.ian.protocol.core.ValueIntPacket.SubType;
 
 /**
  * Sets the frequency at which to tune the beams.
  */
-public class SetBeamFreqPacket extends ShipActionPacket {
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.CLIENT, TYPE, TYPE_SET_BEAMFREQ,
-				new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return SetBeamFreqPacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new SetBeamFreqPacket(reader);
-			}
-		});
-	}
-
+@Packet(origin = Origin.CLIENT, type = CorePacketType.VALUE_INT, subtype = SubType.SET_BEAM_FREQUENCY)
+public class SetBeamFreqPacket extends ValueIntPacket {
 	/**
 	 * @param frequency The desired beam frequency
 	 */
     public SetBeamFreqPacket(BeamFrequency frequency) {
-        super(TYPE_SET_BEAMFREQ, frequency != null ? frequency.ordinal(): -1);
+        super(frequency != null ? frequency.ordinal(): -1);
 
         if (frequency == null) {
         	throw new IllegalArgumentException(
@@ -42,8 +26,15 @@ public class SetBeamFreqPacket extends ShipActionPacket {
         }
     }
 
-    private SetBeamFreqPacket(PacketReader reader) {
-    	super(TYPE_SET_BEAMFREQ, reader);
+    public SetBeamFreqPacket(PacketReader reader) {
+    	super(reader);
+    }
+
+    /**
+     * The desired beam frequency
+     */
+    public BeamFrequency getBeamFrequency() {
+    	return BeamFrequency.values()[mArg];
     }
 
     @Override

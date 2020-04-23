@@ -1,37 +1,18 @@
 package com.walkertribe.ian.protocol.core.helm;
 
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
 import com.walkertribe.ian.protocol.BaseArtemisPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
 
 /**
- * Set climb/dive.
+ * Changes the ship's trim, causing it to climb, dive or level out.
+ * @author rjwut
  */
+@Packet(origin = Origin.CLIENT, type = CorePacketType.VALUE_FLOAT, subtype = 0x02)
 public class HelmSetClimbDivePacket extends BaseArtemisPacket {
-	private static final int TYPE = 0x0351A5AC;
-    private static final byte SUBTYPE = 0x02;
-
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.CLIENT, TYPE, SUBTYPE,
-				new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return HelmSetClimbDivePacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new HelmSetClimbDivePacket(reader);
-			}
-		});
-	}
-
     private float mPitch;
 
     /**
@@ -39,7 +20,6 @@ public class HelmSetClimbDivePacket extends BaseArtemisPacket {
      * climbing nor diving, 1.0 is hard dive, -1.0 is hard climb
      */
     public HelmSetClimbDivePacket(float pitch) {
-        super(ConnectionType.CLIENT, TYPE);
 
         if (pitch < -1 || pitch > 1) {
         	throw new IllegalArgumentException("Pitch out of range");
@@ -48,19 +28,24 @@ public class HelmSetClimbDivePacket extends BaseArtemisPacket {
         mPitch = pitch;
     }
 
-    private HelmSetClimbDivePacket(PacketReader reader) {
-        super(ConnectionType.CLIENT, TYPE);
+    public HelmSetClimbDivePacket(PacketReader reader) {
         reader.skip(4); // subtype
     	mPitch = reader.readFloat();
     }
 
+    /**
+     * The desired pitch, as a value between -1 ("hard climb") and 1 ("hard
+     * dive").
+     */
 	public float getPitch() {
 		return mPitch;
 	}
 
 	@Override
 	protected void writePayload(PacketWriter writer) {
-    	writer.writeInt(SUBTYPE).writeFloat(mPitch);
+    	writer
+    		.writeInt(0x02) // subtype
+    		.writeFloat(mPitch);
 	}
 
 	@Override

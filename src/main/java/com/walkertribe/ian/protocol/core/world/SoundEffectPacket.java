@@ -1,43 +1,27 @@
 package com.walkertribe.ian.protocol.core.world;
 
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
-import com.walkertribe.ian.protocol.BaseArtemisPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
+import com.walkertribe.ian.protocol.core.SimpleEventPacket;
+import com.walkertribe.ian.protocol.core.SimpleEventPacket.SubType;
 
 /**
  * Indicates that the client should play the indicated sound file.
  * @author rjwut
  */
-public class SoundEffectPacket extends BaseArtemisPacket {
-	private static final int TYPE = 0xf754c8fe;
-	private static final byte MSG_TYPE = 0x03;
+@Packet(origin = Origin.SERVER, type = CorePacketType.SIMPLE_EVENT, subtype = SubType.SOUND_EFFECT)
+public class SoundEffectPacket extends SimpleEventPacket {
+	private CharSequence mFilename;
 
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.SERVER, TYPE, MSG_TYPE,
-				new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return SoundEffectPacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new SoundEffectPacket(reader);
-			}
-		});
+	public SoundEffectPacket(CharSequence filename) {
+		mFilename = filename;
 	}
 
-	private String mFilename;
-
-	private SoundEffectPacket(PacketReader reader) {
-		super(ConnectionType.SERVER, TYPE);
-        reader.skip(4); // subtype
+	public SoundEffectPacket(PacketReader reader) {
+		super(reader);
 		mFilename = reader.readString();
 	}
 
@@ -45,13 +29,14 @@ public class SoundEffectPacket extends BaseArtemisPacket {
 	 * Returns the path of the file to play, relative to the Artemis install
 	 * directory.
 	 */
-	public String getFilename() {
+	public CharSequence getFilename() {
 		return mFilename;
 	}
 
 	@Override
 	protected void writePayload(PacketWriter writer) {
-		writer.writeInt(MSG_TYPE).writeString(mFilename);
+		super.writePayload(writer);
+		writer.writeString(mFilename);
 	}
 
 	@Override

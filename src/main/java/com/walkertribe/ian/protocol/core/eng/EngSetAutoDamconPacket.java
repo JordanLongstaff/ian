@@ -1,43 +1,27 @@
 package com.walkertribe.ian.protocol.core.eng;
 
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
-import com.walkertribe.ian.protocol.core.ShipActionPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
+import com.walkertribe.ian.protocol.core.ValueIntPacket;
+import com.walkertribe.ian.protocol.core.ValueIntPacket.SubType;
 
 /**
  * Set whether DAMCON teams should be autonomous or not.
  * @author dhleong
  */
-public class EngSetAutoDamconPacket extends ShipActionPacket {
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.CLIENT, TYPE, TYPE_AUTO_DAMCON,
-				new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return EngSetAutoDamconPacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new EngSetAutoDamconPacket(reader);
-			}
-		});
-	}
-
+@Packet(origin = Origin.CLIENT, type = CorePacketType.VALUE_INT, subtype = SubType.SET_AUTO_DAMCON)
+public class EngSetAutoDamconPacket extends ValueIntPacket {
 	/**
 	 * @param autonomous Whether DAMCON teams should be autonomous
 	 */
     public EngSetAutoDamconPacket(boolean autonomous) {
-        super(TYPE_AUTO_DAMCON, autonomous ? 1 : 0);
+        super(autonomous ? 1 : 0);
     }
 
-    private EngSetAutoDamconPacket(PacketReader reader) {
-        super(TYPE_AUTO_DAMCON, reader);
+    public EngSetAutoDamconPacket(PacketReader reader) {
+        super(reader);
     }
 
     public boolean isAutonomous() {

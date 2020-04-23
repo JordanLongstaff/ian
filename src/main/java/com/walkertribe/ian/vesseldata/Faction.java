@@ -7,7 +7,7 @@ import java.util.Set;
 import com.walkertribe.ian.enums.FactionAttribute;
 
 /**
- * Corresponds to the <hullRace> element in vesselData.xml.
+ * Corresponds to the &lt;hullRace&gt; element in vesselData.xml.
  * @author rjwut
  */
 public class Faction {
@@ -62,6 +62,6 @@ public class Faction {
 	 * Returns this Faction's Taunts.
 	 */
 	public Taunt[] getTaunts() {
-		return (Taunt[]) taunts.toArray();
+		return taunts.toArray(new Taunt[taunts.size()]);
 	}
 }

@@ -7,6 +7,10 @@ import com.walkertribe.ian.iface.PacketWriter;
 import com.walkertribe.ian.world.ArtemisCreature;
 import com.walkertribe.ian.world.ArtemisObject;
 
+/**
+ * ObjectParser implementation for creatures
+ * @author rjwut
+ */
 public class CreatureParser extends AbstractObjectParser {
 	private enum Bit {
     	X,
@@ -24,31 +28,33 @@ public class CreatureParser extends AbstractObjectParser {
     	UNK_2_4,
     	UNK_2_5,
     	UNK_2_6,
-    	UNK_2_7,
-    	UNK_2_8;
+    	HEALTH,
+    	MAX_HEALTH,
+    	
+    	UNK_3_1,
+    	UNK_3_2;
     }
-    private static final Bit[] BITS = Bit.values();
+    private static final int BIT_COUNT = Bit.values().length;
 
     CreatureParser() {
 		super(ObjectType.CREATURE);
 	}
 
 	@Override
-	public Bit[] getBits() {
-		return BITS;
+	public int getBitCount() {
+		return BIT_COUNT;
 	}
 
 	@Override
 	protected ArtemisCreature parseImpl(PacketReader reader) {
         final ArtemisCreature creature = new ArtemisCreature(reader.getObjectId());
-        reader.skip(1); // unused third byte in bit field
-        creature.setX(reader.readFloat(Bit.X, Float.MIN_VALUE));
-        creature.setY(reader.readFloat(Bit.Y, Float.MIN_VALUE));
-        creature.setZ(reader.readFloat(Bit.Z, Float.MIN_VALUE));
+        creature.setX(reader.readFloat(Bit.X));
+        creature.setY(reader.readFloat(Bit.Y));
+        creature.setZ(reader.readFloat(Bit.Z));
 		creature.setName(reader.readString(Bit.NAME));
-        creature.setHeading(reader.readFloat(Bit.HEADING, Float.MIN_VALUE));
-        creature.setPitch(reader.readFloat(Bit.PITCH, Float.MIN_VALUE));
-        creature.setRoll(reader.readFloat(Bit.ROLL, Float.MIN_VALUE));
+        creature.setHeading(reader.readFloat(Bit.HEADING));
+        creature.setPitch(reader.readFloat(Bit.PITCH));
+        creature.setRoll(reader.readFloat(Bit.ROLL));
 
         if (reader.has(Bit.CREATURE_TYPE)) {
             creature.setCreatureType(CreatureType.values()[reader.readInt()]);
@@ -60,22 +66,25 @@ public class CreatureParser extends AbstractObjectParser {
         reader.readObjectUnknown(Bit.UNK_2_4, 4);
         reader.readObjectUnknown(Bit.UNK_2_5, 4);
         reader.readObjectUnknown(Bit.UNK_2_6, 4);
-        reader.readObjectUnknown(Bit.UNK_2_7, 4);
-        reader.readObjectUnknown(Bit.UNK_2_8, 4);
+
+        creature.setHealth(reader.readFloat(Bit.HEALTH));
+        creature.setMaxHealth(reader.readFloat(Bit.MAX_HEALTH));
+
+        reader.readObjectUnknown(Bit.UNK_3_1, 1);
+        reader.readObjectUnknown(Bit.UNK_3_2, 4);
         return creature;
 	}
 
 	@Override
 	public void write(ArtemisObject obj, PacketWriter writer) {
 		ArtemisCreature creature = (ArtemisCreature) obj;
-		writer	.writeByte((byte) 0)
-				.writeFloat(Bit.X, creature.getX(), Float.MIN_VALUE)
-				.writeFloat(Bit.Y, creature.getY(), Float.MIN_VALUE)
-				.writeFloat(Bit.Z, creature.getZ(), Float.MIN_VALUE)
+		writer	.writeFloat(Bit.X, creature.getX())
+				.writeFloat(Bit.Y, creature.getY())
+				.writeFloat(Bit.Z, creature.getZ())
 				.writeString(Bit.NAME, creature.getName())
-				.writeFloat(Bit.HEADING, creature.getHeading(), Float.MIN_VALUE)
-				.writeFloat(Bit.PITCH, creature.getPitch(), Float.MIN_VALUE)
-				.writeFloat(Bit.ROLL, creature.getRoll(), Float.MIN_VALUE);
+				.writeFloat(Bit.HEADING, creature.getHeading())
+				.writeFloat(Bit.PITCH, creature.getPitch())
+				.writeFloat(Bit.ROLL, creature.getRoll());
 
 		CreatureType creatureType = creature.getCreatureType();
 
@@ -89,7 +98,9 @@ public class CreatureParser extends AbstractObjectParser {
 				.writeUnknown(Bit.UNK_2_4)
 				.writeUnknown(Bit.UNK_2_5)
 				.writeUnknown(Bit.UNK_2_6)
-				.writeUnknown(Bit.UNK_2_7)
-				.writeUnknown(Bit.UNK_2_8);
+				.writeFloat(Bit.HEALTH, creature.getHealth())
+				.writeFloat(Bit.MAX_HEALTH, creature.getMaxHealth())
+				.writeUnknown(Bit.UNK_3_1)
+				.writeUnknown(Bit.UNK_3_2);
 	}
 }

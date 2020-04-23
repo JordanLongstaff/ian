@@ -3,15 +3,20 @@ package com.walkertribe.ian.world;
 import com.walkertribe.ian.enums.ShipSystem;
 
 /**
- * Contains miscellaneous constants about the game world.
+ * Artemis-related constants
  * @author rjwut
  */
 public final class Artemis {
 	/**
+	 * The default port on which the Artemis server listens for connections.
+	 */
+	public static final int DEFAULT_PORT = 2010;
+
+	/**
 	 * The default amount of coolant the player ship has at start. The amount of
 	 * coolant may change due to side mission rewards or custom scripting.
 	 */
-    public static final int DEFAULT_COOLANT = 8;
+    public static final byte DEFAULT_COOLANT = 8;
 
     /**
      * The maximum amount of coolant that can be applied to any one system.
@@ -33,7 +38,7 @@ public final class Artemis {
     /**
      * The maximum warp factor player ships can achieve.
      */
-    public static final int MAX_WARP = 4;
+    public static final byte MAX_WARP = 4;
 
     /**
      * The number of available player ships.

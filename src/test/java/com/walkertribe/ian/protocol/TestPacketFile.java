@@ -15,16 +15,15 @@ import java.io.OutputStreamWriter;
 import java.net.URL;
 import java.nio.charset.Charset;
 
-import com.walkertribe.ian.Context;
-import com.walkertribe.ian.enums.ConnectionType;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.BaseDebugger;
 import com.walkertribe.ian.iface.Listener;
 import com.walkertribe.ian.iface.ListenerRegistry;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
+import com.walkertribe.ian.protocol.core.CoreArtemisProtocol;
+import com.walkertribe.ian.util.TestUtil;
 import com.walkertribe.ian.util.TextUtil;
-import com.walkertribe.ian.vesseldata.FilePathResolver;
 
 /**
  * Class that can read and write test packet files, and perform various
@@ -64,29 +63,25 @@ public class TestPacketFile {
 	 * - Connection type for the packets in the file (SERVER or CLIENT)
 	 */
 	public static void main(String[] args) {
-		Context ctx = new Context(new FilePathResolver(args[0]));
 		String fileName = args[1];
-		ConnectionType connType = ConnectionType.valueOf(args[2]);
+		Origin origin = Origin.valueOf(args[2]);
 
 		try {
-			new TestPacketFile(new File(fileName), Mode.READ, ctx).test(connType);
+			new TestPacketFile(new File(fileName), Mode.READ).test(origin);
 		} catch (IOException ex) {
 			ex.printStackTrace();
 		}
 	}
 
-	private Context ctx;
-	private Mode mode;
+	private Mode mode;                  // READ or WRITE
 	private byte[] bytes;               // bytes read in on read mode
 	private OutputStream os;            // destination stream for write mode
 	private ByteArrayOutputStream baos; // buffer for write mode
 
 	/**
-	 * Reads test packet data from the given File.
+	 * Opens the named File (read or write).
 	 */
-	public TestPacketFile(File file, Mode mode, Context ctx) throws IOException {
-		this.ctx = ctx;
-
+	public TestPacketFile(File file, Mode mode) throws IOException {
 		if (mode == Mode.READ) {
 			initRead(new FileInputStream(file));
 		} else if (mode == Mode.WRITE) {
@@ -109,15 +104,15 @@ public class TestPacketFile {
 	}
 
 	/**
-	 * Reads the given test packet data.
+	 * Reads the test packet data in the given byte array.
 	 */
-	public TestPacketFile(ConnectionType connType, int pktType, byte[] payload) throws IOException {
+	public TestPacketFile(Origin origin, int pktType, byte[] payload) throws IOException {
 		ByteArrayOutputStream out = null;
 
 		try {
 			out = new ByteArrayOutputStream();
 			PacketWriter writer = new PacketWriter(out);
-			writer.start(connType, pktType);
+			writer.start(origin, pktType);
 			writer.writeBytes(payload);
 			initRead(new ByteArrayInputStream(out.toByteArray()));
 		} finally {
@@ -132,10 +127,17 @@ public class TestPacketFile {
 		
 	}
 
+	/**
+	 * Creates a TestPacketFile that will be written to the given OutputStream.
+	 */
 	public TestPacketFile(OutputStream os) {
 		initWrite(os);
 	}
 
+	/**
+	 * Reads the data from the given InputStream and stores it in a byte array
+	 * for testing.
+	 */
 	private void initRead(InputStream is) throws IOException {
 		mode = Mode.READ;
 		BufferedReader reader = new BufferedReader(new InputStreamReader(is, UTF_8));
@@ -161,8 +163,15 @@ public class TestPacketFile {
 
 		reader.close();
 		bytes = out.toByteArray();
+
+		if (TestUtil.DEBUG) {
+			System.out.println("Length: " + bytes.length + " bytes");
+		}
 	}
 
+	/**
+	 * Prepares an output buffer for writing to the given OutputStream.
+	 */
 	private void initWrite(OutputStream outputStream) {
 		mode = Mode.WRITE;
 		this.os = outputStream;
@@ -170,11 +179,11 @@ public class TestPacketFile {
 	}
 
 	/**
-	 * Given a ConnectionType from which the data in this file originated,
-	 * attempts to parse and re-write the data. If an error occurs, a stack
-	 * trace will be written out to System.err.
+	 * Given an Origin for the data in this file, attempts to parse and
+	 * re-write the data. If an error occurs, a stack trace will be written out
+	 * to System.err.
 	 */
-	public void test(ConnectionType connType) {
+	public void test(Origin origin) {
 		if (mode != Mode.READ) {
 			throw new IllegalStateException("test() only valid for read mode");
 		}
@@ -184,10 +193,9 @@ public class TestPacketFile {
 		listeners.register(this);
 		ByteArrayInputStream bais = new ByteArrayInputStream(bytes);
 		PacketReader reader = new PacketReader(
-				ctx,
-				connType,
+				origin,
 				bais,
-				new PacketFactoryRegistry(),
+				new CoreArtemisProtocol(),
 				listeners
 		);
 		PacketTestDebugger debugger = new PacketTestDebugger();
@@ -219,21 +227,28 @@ public class TestPacketFile {
 	}
 
 	/**
-	 * Returns a PacketReader of the given type that will consume the bytes from
-	 * this file.
+	 * Returns a PacketReader of the given origin that will consume the bytes
+	 * from this file. If parse is true, TestPacketFile will register an
+	 * ArtemisPacket listener to the ListenerRegistry it creates for the
+	 * PacketReader, causing all known packets received to be parsed. Otherwise,
+	 * no listener will be registered, and all known packets received will be
+	 * emitted as UnparsedPackets.
 	 */
-	public PacketReader toPacketReader(ConnectionType type) {
+	public PacketReader toPacketReader(Origin origin, boolean parse) {
 		if (mode != Mode.READ) {
 			throw new IllegalStateException("toPacketReader() only valid for read mode");
 		}
 
 		ListenerRegistry listeners = new ListenerRegistry();
-		listeners.register(this);
+
+		if (parse) {
+			listeners.register(this);
+		}
+
 		return new PacketReader(
-				ctx,
-				type,
+				origin,
 				new ByteArrayInputStream(bytes),
-				new PacketFactoryRegistry(),
+				new CoreArtemisProtocol(),
 				listeners
 		);
 	}
@@ -241,7 +256,7 @@ public class TestPacketFile {
 	/**
 	 * Returns a PacketWriter of the given type to write packets to the OutputStream.
 	 */
-	public PacketWriter toPacketWriter(ConnectionType type) {
+	public PacketWriter toPacketWriter(Origin type) {
 		if (mode != Mode.WRITE) {
 			throw new IllegalStateException("toPacketWriter() only valid for write mode");
 		}
@@ -250,11 +265,12 @@ public class TestPacketFile {
 	}
 
 	/**
-	 * Flushes the packets which have been written to the OutputStream and closes it.
+	 * Grabs the bytes that have been written to the output buffer and writes
+	 * them to the OutputStream, then closes it.
 	 */
 	public void close() throws IOException {
 		if (mode != Mode.WRITE) {
-			throw new IllegalStateException("flush() only valid for read mode");
+			throw new IllegalStateException("close() only valid for read mode");
 		}
 
 		BufferedOutputStream bos = new BufferedOutputStream(os);
@@ -265,7 +281,8 @@ public class TestPacketFile {
 
 	/**
 	 * Do nothing upon parsing a packet; this simply forces all packets to be
-	 * read; the actual test work is handled by the PacketTestDebugger class.
+	 * read when registered to the ListenerRegistry; the actual test work is
+	 * handled by the PacketTestDebugger class.
 	 */
 	@Listener
 	public void onPacket(ArtemisPacket pkt) {
@@ -310,15 +327,18 @@ public class TestPacketFile {
 	private class PacketTestDebugger extends BaseDebugger {
 		private byte[] in;
 
+		/**
+		 * Captures the raw bytes of a received packet.
+		 */
 		@Override
-		public void onRecvPacketBytes(ConnectionType connType, int pktType,
+		public void onRecvPacketBytes(Origin origin, int pktType,
 				byte[] payload) {
 			int packetLength = payload.length + 24;
 			in = new byte[packetLength];
 			int offset = 0;
 			offset = writeInt(ArtemisPacket.HEADER, in, offset);
 			offset = writeInt(packetLength, in, offset);
-			offset = writeInt(connType.toInt(), in, offset);
+			offset = writeInt(origin.toInt(), in, offset);
 			offset = writeInt(0, in, offset);
 			offset = writeInt(packetLength - 20, in, offset);
 			offset = writeInt(pktType, in, offset);
@@ -327,9 +347,7 @@ public class TestPacketFile {
 
 		@Override
 		public void onPacketParseException(ArtemisPacketException ex) {
-			System.err.println(ex.getConnectionType() + ": " +
-					TextUtil.intToHex(ex.getPacketType()) + " " +
-					TextUtil.byteArrayToHexString(ex.getPayload()));
+			ex.printPacketDump();
 			ex.printStackTrace();
 		}
 

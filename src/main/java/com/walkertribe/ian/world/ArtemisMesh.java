@@ -5,19 +5,27 @@ import java.util.SortedMap;
 import com.walkertribe.ian.Context;
 import com.walkertribe.ian.enums.ObjectType;
 import com.walkertribe.ian.model.Model;
+import com.walkertribe.ian.util.BoolState;
 
 /**
  * This is a custom-rendered mesh in the game world. These are typically
  * inserted by scripts for non-interactive objects.
  * @author dhleong
  */
-public class ArtemisMesh extends BaseArtemisObject {
-    private String mMesh;
-    private String mTex;
-    private boolean hasColor;
-    private int mColor;
-    private float mShieldsFront = Float.MIN_VALUE;
-    private float mShieldsRear = Float.MIN_VALUE;
+public class ArtemisMesh extends BaseArtemisOrientable {
+	private float mRollDelta = Float.NaN;
+	private float mPitchDelta = Float.NaN;
+	private float mHeadingDelta = Float.NaN;
+    private CharSequence mMesh;
+    private CharSequence mTex;
+    private float mPushRadius = Float.NaN;
+    private BoolState mBlockFire = BoolState.UNKNOWN;
+    private float mScale = Float.NaN;
+    private float mRed = Float.NaN;
+    private float mGreen = Float.NaN;
+    private float mBlue = Float.NaN;
+    private float mShieldsFront = Float.NaN;
+    private float mShieldsRear = Float.NaN;
 
     public ArtemisMesh(int objId) {
         super(objId);
@@ -28,11 +36,35 @@ public class ArtemisMesh extends BaseArtemisObject {
         return ObjectType.GENERIC_MESH;
     }
 
+    public float getRollDelta() {
+    	return mRollDelta;
+    }
+
+    public void setRollDelta(float rollDelta) {
+    	mRollDelta = rollDelta;
+    }
+
+    public float getPitchDelta() {
+    	return mPitchDelta;
+    }
+
+    public void setPitchDelta(float pitchDelta) {
+    	mPitchDelta = pitchDelta;
+    }
+
+    public float getHeadingDelta() {
+    	return mHeadingDelta;
+    }
+
+    public void setHeadingDelta(float headingDelta) {
+    	mHeadingDelta = headingDelta;
+    }
+
     /**
      * The 3D mesh filename
      * Unspecified: null
      */
-    public String getMesh() {
+    public CharSequence getMesh() {
         return mMesh;
     }
 
@@ -42,10 +74,10 @@ public class ArtemisMesh extends BaseArtemisObject {
      */
     @Override
     public Model getModel(Context ctx) {
-    	return ctx.getModel(mMesh);
+    	return ctx.getModel(mMesh.toString());
     }
 
-    public void setMesh(String path) {
+    public void setMesh(CharSequence path) {
         mMesh = path;
     }
 
@@ -53,74 +85,83 @@ public class ArtemisMesh extends BaseArtemisObject {
      * The texture filename
      * Unspecified: null
      */
-    public String getTexture() {
+    public CharSequence getTexture() {
         return mTex;
     }
     
-    public void setTexture(String path) {
+    public void setTexture(CharSequence path) {
         mTex = path;
     }
 
-    public boolean hasColor() {
-    	return hasColor;
+    public float getPushRadius() {
+    	return mPushRadius;
+    }
+
+    public void setPushRadius(float pushRadius) {
+    	mPushRadius = pushRadius;
+    }
+
+    public BoolState getBlockFire() {
+    	return mBlockFire;
+    }
+
+    public void setBlockFire(BoolState blockFire) {
+    	mBlockFire = blockFire;
+    }
+
+    public float getScale() {
+    	return mScale;
+    }
+
+    @Override
+    public float getScale(Context ctx) {
+    	return Float.isNaN(mScale) ? super.getScale(ctx) : mScale;
+    }
+
+    public void setScale(float scale) {
+    	mScale = scale;
     }
 
     /**
-     * The color that will be used to render this object on sensor views. This
-     * is specified as an ARGB int value. To specify each channel separately,
-     * use the setARGB() method.
-     * Unspecified: 0
+     * The red channel value for the color.
+     * Unspecified: Float.NaN
      */
-    public int getColor() {
-        return mColor;
+    public float getRed() {
+    	return mRed;
     }
 
-    public int getAlpha() {
-    	return (mColor >>> 24) & 0xff;
-    }
-
-    public int getRed() {
-    	return (mColor >>> 16) & 0xff;
-    }
-
-    public int getGreen() {
-    	return (mColor >>> 8) & 0xff;
-    }
-
-    public int getBlue() {
-    	return mColor & 0xff;
+    public void setRed(float red) {
+    	mRed = red;
     }
 
     /**
-     * Sets the color that will be used to render this object on sensor views,
-     * specifying each channel as a value between 0 and 255.
+     * The green channel value for the color.
+     * Unspecified: Float.NaN
      */
-    public void setARGB(int a, int r, int g, int b) {
-        mColor = 0;
-        mColor |= ((a & 0xff) << 24);
-        mColor |= ((r & 0xff) << 16);
-        mColor |= ((g & 0xff) << 8);
-        mColor |= (b & 0xff);
-    	hasColor = true;
+    public float getGreen() {
+    	return mGreen;
     }
-    
+
+    public void setGreen(float green) {
+    	mGreen = green;
+    }
+
     /**
-     * Sets the color that will be used to render this object on sensor views,
-     * specifying each channel as a value between 0 and 1.
+     * The blue channel value for the color.
+     * Unspecified: Float.NaN
      */
-    public void setARGB(float a, float r, float g, float b) {
-        setARGB(
-            (int)(255 * a),
-            (int)(255 * r), 
-            (int)(255 * g), 
-            (int)(255 * b)
-        );
+    public float getBlue() {
+    	return mBlue;
+    }
+
+    public void setBlue(float blue) {
+    	mBlue = blue;
     }
 
     /**
      * Returns the strength of the mesh's forward shields. These are supposedly
      * "fake" shields, since meshes can't actually be targeted.
-     * Unspecified: Float.MIN_VALUE
+     * Unspecified: Float.NaN
      */
     public float getShieldsFront() {
         return mShieldsFront;
@@ -129,7 +170,7 @@ public class ArtemisMesh extends BaseArtemisObject {
     /**
      * Returns the strength of the mesh's aft shields. These are supposedly
      * "fake" shields, since meshes can't actually be targeted.
-     * Unspecified: Float.MIN_VALUE
+     * Unspecified: Float.NaN
      */
     public float getShieldsRear() {
         return mShieldsRear;
@@ -145,26 +186,81 @@ public class ArtemisMesh extends BaseArtemisObject {
     }
 
     @Override
-    public void updateFrom(ArtemisObject other, Context ctx) {
-        super.updateFrom(other, ctx);
-        
-        ArtemisMesh m = (ArtemisMesh) other;
-        if (m.mShieldsFront != Float.MIN_VALUE) {
-            mShieldsFront = m.mShieldsFront;
-        }
-        
-        if (m.mShieldsRear != Float.MIN_VALUE) {
-            mShieldsRear = m.mShieldsRear;
+    public void updateFrom(ArtemisObject other) {
+        super.updateFrom(other);
+
+        if (other instanceof ArtemisMesh) {
+            ArtemisMesh m = (ArtemisMesh) other;
+
+            if (!Float.isNaN(m.mRollDelta)) {
+            	mRollDelta = m.mRollDelta;
+            }
+
+            if (!Float.isNaN(m.mPitchDelta)) {
+            	mPitchDelta = m.mPitchDelta;
+            }
+
+            if (!Float.isNaN(m.mHeadingDelta)) {
+            	mHeadingDelta = m.mHeadingDelta;
+            }
+
+            if (m.mMesh != null) {
+            	mMesh = m.mMesh;
+            }
+
+            if (m.mTex != null) {
+            	mTex = m.mTex;
+            }
+
+            if (!Float.isNaN(m.mPushRadius)) {
+            	mPushRadius = m.mPushRadius;
+            }
+
+            if (BoolState.isKnown(m.mBlockFire)) {
+            	mBlockFire = m.mBlockFire;
+            }
+
+            if (!Float.isNaN(m.mScale)) {
+            	mScale = m.mScale;
+            }
+
+            if (!Float.isNaN(m.mRed)) {
+            	mRed = m.mRed;
+            }
+
+            if (!Float.isNaN(m.mGreen)) {
+            	mGreen = m.mGreen;
+            }
+
+            if (!Float.isNaN(m.mBlue)) {
+            	mBlue = m.mBlue;
+            }
+
+            if (!Float.isNaN(m.mShieldsFront)) {
+                mShieldsFront = m.mShieldsFront;
+            }
+            
+            if (!Float.isNaN(m.mShieldsRear)) {
+                mShieldsRear = m.mShieldsRear;
+            }
         }
     }
 
     @Override
-	public void appendObjectProps(SortedMap<String, Object> props, boolean includeUnspecified) {
-    	super.appendObjectProps(props, includeUnspecified);
-    	putProp(props, "Mesh", mMesh, includeUnspecified);
-    	putProp(props, "Texture", mTex, includeUnspecified);
-    	putProp(props, "Color", mColor, 0, includeUnspecified);
-    	putProp(props, "Shields: fore", mShieldsFront, Float.MIN_VALUE, includeUnspecified);
-    	putProp(props, "Shields: aft", mShieldsRear, Float.MIN_VALUE, includeUnspecified);
+	public void appendObjectProps(SortedMap<String, Object> props) {
+    	super.appendObjectProps(props);
+    	putProp(props, "Roll delta", mRollDelta);
+    	putProp(props, "Pitch delta", mPitchDelta);
+    	putProp(props, "Heading delta", mHeadingDelta);
+    	putProp(props, "Mesh", mMesh);
+    	putProp(props, "Texture", mTex);
+    	putProp(props, "Push radius", mPushRadius);
+    	putProp(props, "Block fire", mBlockFire);
+    	putProp(props, "Scale", mScale);
+    	putProp(props, "Red", mRed);
+    	putProp(props, "Green", mGreen);
+    	putProp(props, "Blue", mBlue);
+    	putProp(props, "Shields: fore", mShieldsFront);
+    	putProp(props, "Shields: aft", mShieldsRear);
     }
 }

@@ -1,24 +1,26 @@
 package com.walkertribe.ian.iface;
 
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.HashSet;
+import java.util.Set;
 import java.util.SortedMap;
 import java.util.TreeMap;
 
-import com.walkertribe.ian.Context;
-import com.walkertribe.ian.enums.ConnectionType;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.enums.ObjectType;
 import com.walkertribe.ian.protocol.ArtemisPacket;
 import com.walkertribe.ian.protocol.ArtemisPacketException;
+import com.walkertribe.ian.protocol.Protocol;
 import com.walkertribe.ian.protocol.UnknownPacket;
 import com.walkertribe.ian.protocol.UnparsedPacket;
+import com.walkertribe.ian.protocol.core.CorePacketType;
 import com.walkertribe.ian.protocol.core.setup.VersionPacket;
-import com.walkertribe.ian.protocol.core.setup.WelcomePacket;
 import com.walkertribe.ian.protocol.core.world.ObjectUpdatePacket;
 import com.walkertribe.ian.util.BitField;
 import com.walkertribe.ian.util.BoolState;
 import com.walkertribe.ian.util.ByteArrayReader;
+import com.walkertribe.ian.util.JamCrc;
 import com.walkertribe.ian.util.TextUtil;
 import com.walkertribe.ian.util.Version;
 
@@ -29,12 +31,18 @@ import com.walkertribe.ian.util.Version;
  * @author rjwut
  */
 public class PacketReader {
-	private Context ctx;
-	private ConnectionType connType;
+	private static final Set<Integer> REQUIRED_PACKET_TYPES = new HashSet<Integer>();
+
+	static {
+		REQUIRED_PACKET_TYPES.add(JamCrc.compute(CorePacketType.PLAIN_TEXT_GREETING));
+		REQUIRED_PACKET_TYPES.add(JamCrc.compute(CorePacketType.CONNECTED));
+		REQUIRED_PACKET_TYPES.add(JamCrc.compute(CorePacketType.HEARTBEAT));
+	}
+
+	private Origin requiredOrigin;
 	private InputStream in;
 	private byte[] intBuffer = new byte[4];
-	private boolean parse = true;
-	private PacketFactoryRegistry factoryRegistry;
+	private Protocol protocol;
 	private ListenerRegistry listenerRegistry;
 	private Version version;
 	private ByteArrayReader payload;
@@ -45,33 +53,16 @@ public class PacketReader {
 	private SortedMap<String, byte[]> unknownObjectProps;
 
 	/**
-	 * Wraps the given InputStream with this PacketReader.
+	 * Wraps the given InputStream with this PacketReader. The requiredOrigin
+	 * parameter may be omitted; if it is not, any packet read that does not
+	 * have the same Origin will cause an ArtemisPacketException.
 	 */
-	public PacketReader(Context ctx, ConnectionType connType, InputStream in,
-			PacketFactoryRegistry factoryRegistry,
-			ListenerRegistry listenerRegistry) {
-		this.ctx = ctx;
-		this.connType = connType;
+	public PacketReader(Origin requiredOrigin, InputStream in,
+			Protocol protocol, ListenerRegistry listenerRegistry) {
+		this.requiredOrigin = requiredOrigin;
 		this.in = in;
-		this.factoryRegistry = factoryRegistry;
+		this.protocol = protocol;
 		this.listenerRegistry = listenerRegistry;
-	}
-
-	/**
-	 * Returns the Context associated with this PacketReader.
-	 */
-	public Context getContext() {
-		return ctx;
-	}
-
-	/**
-	 * If set to false, all packets will be returned as UnknownPackets. This is
-	 * useful for testing purposes to easily capture packet payloads in their
-	 * raw form without bothering to parse any of them. By default, this
-	 * property is true, meaning that all known packets will be parsed.
-	 */
-	public void setParsePackets(boolean parse) {
-		this.parse = parse;
 	}
 
 	/**
@@ -111,19 +102,18 @@ public class PacketReader {
 		}
 
 		// connection type
-		final int connectionTypeValue = readIntFromStream();
-		final ConnectionType connectionType = ConnectionType.fromInt(connectionTypeValue);
+		final int originValue = readIntFromStream();
+		final Origin origin = Origin.fromInt(originValue);
 
-		if (connectionType == null) {
+		if (origin == null) {
 			throw new ArtemisPacketException(
-					"Unknown connection type: " + connectionTypeValue
+					"Unknown origin: " + originValue
 			);
 		}
 
-		if (connectionType != connType) {
+		if (requiredOrigin != null && origin != requiredOrigin) {
 			throw new ArtemisPacketException(
-					"Connection type mismatch: expected " + connType +
-					", got " + connectionType
+					"Origin mismatch: expected " + requiredOrigin + ", got " + origin
 			);
 		}
 
@@ -133,7 +123,7 @@ public class PacketReader {
 		if (padding != 0) {
 			throw new ArtemisPacketException(
 					"No empty padding after connection type?",
-					connType
+					origin
 			);
 		}
 
@@ -147,7 +137,7 @@ public class PacketReader {
 					"; expected " + expectedRemainingBytes +
 					" for remaining bytes field, but got " +
 					remainingBytes,
-					connType
+					origin
 			);
 		}
 
@@ -163,22 +153,17 @@ public class PacketReader {
 		try {
 			ByteArrayReader.readBytes(in, remaining, payloadBytes);
 		} catch (InterruptedException ex) {
-			throw new ArtemisPacketException(ex, connType, packetType);
+			throw new ArtemisPacketException(ex, origin, packetType);
 		} catch (IOException ex) {
-			throw new ArtemisPacketException(ex, connType, packetType);
+			throw new ArtemisPacketException(ex, origin, packetType);
 		}
 
-		debugger.onRecvPacketBytes(connType, packetType, payloadBytes);
+		debugger.onRecvPacketBytes(origin, packetType, payloadBytes);
 
 		// Find the PacketFactory that knows how to handle this packet type
-		PacketFactory factory = null;
 		byte subtype = remaining > 0 ? payloadBytes[0] : 0x00;
-
-		if (parse) {
-			factory = factoryRegistry.get(connType, packetType, subtype);
-		}
-
 		ParseResult result = new ParseResult();
+		PacketFactory<?> factory = protocol.getFactory(packetType, subtype);
 		Class<? extends ArtemisPacket> factoryClass;
 		ArtemisPacket packet = null;
 
@@ -188,7 +173,7 @@ public class PacketReader {
 			factoryClass = factory.getFactoryClass();
 		} else {
 			// No factory can handle this; create an UnknownPacket
-			UnknownPacket unkPkt = new UnknownPacket(connType, packetType, payloadBytes);
+			UnknownPacket unkPkt = new UnknownPacket(origin, packetType, payloadBytes);
 			debugger.onRecvUnparsedPacket(unkPkt);
 			factoryClass = UnknownPacket.class;
 			packet = unkPkt;
@@ -207,22 +192,30 @@ public class PacketReader {
 			}
 		}
 
-		// IAN needs to parse the WelcomePacket and VersionPacket, even if the
-		// client isn't interested in them.
-		boolean required = packetType == WelcomePacket.TYPE || packetType == VersionPacket.TYPE;
+		// IAN wants certain packet types even if the code consuming IAN isn't
+		// interested in them.
+		boolean required = REQUIRED_PACKET_TYPES.contains(Integer.valueOf(packetType));
+		payload = new ByteArrayReader(payloadBytes);
 
 		if (required || result.isInteresting()) {
 			// We need this packet
-			payload = new ByteArrayReader(payloadBytes);
-
 			if (packet == null) {
 				// It's not an UnknownPacket, so we need to parse it
 				try {
 					packet = factory.build(this);
 				} catch (ArtemisPacketException ex) {
-					throw new ArtemisPacketException(ex, connType, packetType, payloadBytes);
+					result.setException(ex);
+					ex.appendParsingDetails(origin, packetType, payloadBytes);
 				} catch (RuntimeException ex) {
-					throw new ArtemisPacketException(ex, connType, packetType, payloadBytes);
+					result.setException(new ArtemisPacketException(ex, origin, packetType, payloadBytes));
+				}
+
+				ArtemisPacketException parseException = result.getException();
+
+				if (parseException != null) {
+					 // an exception occurred during payload parsing
+					debugger.onPacketParseException(parseException);
+					return result;
 				}
 
 				if (packet instanceof VersionPacket) {
@@ -239,26 +232,32 @@ public class PacketReader {
 							TextUtil.byteArrayToHexString(readBytes(unreadByteCount))
 					);
 				}
-			}
 
-			debugger.onRecvParsedPacket(packet);
+				debugger.onRecvParsedPacket(packet);
+			} else {
+				payload.skip(payloadBytes.length);
+			}
 		} else {
 			// Nothing is interested in this packet
-			UnparsedPacket unpPkt = new UnparsedPacket(connType, packetType, payloadBytes);
+			UnparsedPacket unpPkt = new UnparsedPacket(origin, packetType, payloadBytes);
 			debugger.onRecvUnparsedPacket(unpPkt);
 			packet = unpPkt;
+			payload.skip(payloadBytes.length);
 		}
 
 		result.setPacket(packet);
 		return result;
 	}
 
+	/**
+	 * Returns the number of unread bytes in the payload.
+	 */
 	public int getBytesLeft() {
 		return payload.getBytesLeft();
 	}
 
 	/**
-	 * Returns true if the packet currently being read has more data; false
+	 * Returns true if the payload currently being read has more data; false
 	 * otherwise.
 	 */
 	public boolean hasMore() {
@@ -281,10 +280,10 @@ public class PacketReader {
 	}
 
 	/**
-	 * Convenience method for readByte(bit, 0).
+	 * Convenience method for readByte(bit.ordinal(), defaultValue).
 	 */
-	public byte readByte(Enum<?> bit) {
-		return readByte(bit, (byte) 0);
+	public byte readByte(Enum<?> bit, byte defaultValue) {
+		return readByte(bit.ordinal(), defaultValue);
 	}
 
 	/**
@@ -292,8 +291,8 @@ public class PacketReader {
 	 * bit in the current BitField is on. Otherwise, the pointer is not moved,
 	 * and the given default value is returned.
 	 */
-	public byte readByte(Enum<?> bit, byte defaultValue) {
-		return bitField.get(bit) ? readByte() : defaultValue;
+	public byte readByte(int bitIndex, byte defaultValue) {
+		return bitField.get(bitIndex) ? readByte() : defaultValue;
 	}
 
 	/**
@@ -305,13 +304,20 @@ public class PacketReader {
 	}
 
 	/**
+	 * Convenience method for readBool(bit.ordinal(), bytes).
+	 */
+	public BoolState readBool(Enum<?> bit, int bytes) {
+		return readBool(bit.ordinal(), bytes);
+	}
+
+	/**
 	 * Reads the indicated number of bytes from the current packet's payload if
 	 * the indicated bit in the current BitField is on, then coerces the zeroeth
 	 * byte read into a BoolState. Otherwise, the pointer is not moved, and
 	 * BoolState.UNKNOWN is returned.
 	 */
-	public BoolState readBool(Enum<?> bit, int bytes) {
-		return bitField.get(bit) ? readBool(bytes) : BoolState.UNKNOWN;
+	public BoolState readBool(int bitIndex, int bytes) {
+		return bitField.get(bitIndex) ? readBool(bytes) : BoolState.UNKNOWN;
 	}
 
 	/**
@@ -322,10 +328,10 @@ public class PacketReader {
 	}
 
 	/**
-	 * Convenience method for readShort(bit, 0).
+	 * Convenience method for readShort(bit.ordinal(), defaultValue).
 	 */
-	public int readShort(Enum<?> bit) {
-		return readShort(bit, 0);
+	public int readShort(Enum<?> bit, int defaultValue) {
+		return readShort(bit.ordinal(), defaultValue);
 	}
 
 	/**
@@ -333,8 +339,8 @@ public class PacketReader {
 	 * the current BitField is on. Otherwise, the pointer is not moved, and the
 	 * given default value is returned.
 	 */
-	public int readShort(Enum<?> bit, int defaultValue) {
-		return bitField.get(bit) ? readShort() : defaultValue;
+	public int readShort(int bitIndex, int defaultValue) {
+		return bitField.get(bitIndex) ? readShort() : defaultValue;
 	}
 
 	/**
@@ -345,10 +351,10 @@ public class PacketReader {
 	}
 
 	/**
-	 * Convenience method for readInt(bit, -1).
+	 * Convenience method for readInt(bit.ordinal(), defaultValue).
 	 */
-	public int readInt(Enum<?> bit) {
-		return readInt(bit, -1);
+	public int readInt(Enum<?> bit, int defaultValue) {
+		return readInt(bit.ordinal(), defaultValue);
 	}
 
 	/**
@@ -356,8 +362,8 @@ public class PacketReader {
 	 * the current BitField is on. Otherwise, the pointer is not moved, and the
 	 * given default value is returned.
 	 */
-	public int readInt(Enum<?> bit, int defaultValue) {
-		return bitField.get(bit) ? readInt() : defaultValue;
+	public int readInt(int bitIndex, int defaultValue) {
+		return bitField.get(bitIndex) ? readInt() : defaultValue;
 	}
 
 	/**
@@ -368,18 +374,25 @@ public class PacketReader {
 	}
 
 	/**
-	 * Reads a float from the current packet's payload if the indicated bit in
-	 * the current BitField is on. Otherwise, the pointer is not moved, and the
-	 * given default value is returned.
+	 * Convenience method for readFloat(bit.ordinal()).
 	 */
-	public float readFloat(Enum<?> bit, float defaultValue) {
-		return bitField.get(bit) ? readFloat() : defaultValue;
+	public float readFloat(Enum<?> bit) {
+		return readFloat(bit.ordinal());
+	}
+
+	/**
+	 * Reads a float from the current packet's payload if the indicated bit in
+	 * the current BitField is on. Otherwise, the pointer is not moved, and
+	 * Float.NaN is returned instead.
+	 */
+	public float readFloat(int bitIndex) {
+		return bitField.get(bitIndex) ? readFloat() : Float.NaN;
 	}
 
 	/**
 	 * Reads a UTF-16LE String from the current packet's payload.
 	 */
-	public String readString() {
+	public CharSequence readString() {
 		return payload.readUtf16LeString();
 	}
 
@@ -391,12 +404,19 @@ public class PacketReader {
 	}
 
 	/**
+	 * Convenience method for readString(bit.ordinal()).
+	 */
+	public CharSequence readString(Enum<?> bit) {
+		return readString(bit.ordinal());
+	}
+
+	/**
 	 * Reads a UTF-16LE String from the current packet's payload if the
 	 * indicated bit in the current BitField is on. Otherwise, the pointer is
 	 * not moved, and null is returned.
 	 */
-	public String readString(Enum<?> bit) {
-		return bitField.get(bit) ? readString() : null;
+	public CharSequence readString(int bitIndex) {
+		return bitField.get(bitIndex) ? readString() : null;
 	}
 
 	/**
@@ -407,12 +427,19 @@ public class PacketReader {
 	}
 
 	/**
+	 * Convenience method for readBytes(bit.ordinal(), byteCount).
+	 */
+	public byte[] readBytes(Enum<?> bit, int byteCount) {
+		return readBytes(bit.ordinal(), byteCount);
+	}
+
+	/**
 	 * Reads the given number of bytes from the current packet's payload if
 	 * the indicated bit in the current BitField is on. Otherwise, the pointer
 	 * is not moved, and null is returned.
 	 */
-	public byte[] readBytes(Enum<?> bit, int byteCount) {
-		return bitField.get(bit) ? readBytes(byteCount) : null;
+	public byte[] readBytes(int bitIndex, int byteCount) {
+		return bitField.get(bitIndex) ? readBytes(byteCount) : null;
 	}
 
 	/**
@@ -432,20 +459,14 @@ public class PacketReader {
 	}
 
 	/**
-	 * Reads bytes from the current packet's payload until the endByte value is
-	 * encountered, then puts them in the unknown object property map with the
-	 * indicated name. This method is needed for the UpgradesParser, as we do
-	 * not know the sizes of some of the fields. If we discover the sizes of the
-	 * remaining fields, this method could probably go away.
+	 * If the indicated bit in the current BitField is off, this method returns
+	 * without doing anything. Otherwise, it acts as a convenience method for
+	 * readObjectUnknown(bit.name(), byteCount).
 	 */
-	public void readObjectUnknownUntil(String name, byte endByte) {
-		ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-
-		while (hasMore() && peekByte() != endByte) {
-			bytes.write(readByte());
+	public void readObjectUnknown(Enum<?> bit, int byteCount) {
+		if (bitField.get(bit.ordinal())) {
+			readObjectUnknown(bit.name(), byteCount);
 		}
-
-		unknownObjectProps.put(name, bytes.toByteArray());
 	}
 
 	/**
@@ -453,9 +474,45 @@ public class PacketReader {
 	 * without doing anything. Otherwise, it acts as a convenience method for
 	 * readObjectUnknown(bit.name(), byteCount).
 	 */
-	public void readObjectUnknown(Enum<?> bit, int byteCount) {
-		if (bitField.get(bit)) {
-			readObjectUnknown(bit.name(), byteCount);
+	public void readObjectUnknown(int bitIndex, int byteCount) {
+		if (bitField.get(bitIndex)) {
+			readObjectUnknown(BitField.generateBitName(bitIndex), byteCount);
+		}
+	}
+
+	/**
+	 * If the indicated bit in the current BitField is off, this method returns
+	 * without doing anything. Otherwise, it reads a string from the current
+	 * packet's payload and puts it in the unknown object property map.
+	 */
+	public void readObjectUnknownString(int bitIndex) {
+		readObjectUnknownString(bitIndex, BitField.generateBitName(bitIndex));
+	}
+
+	/**
+	 * If the indicated bit in the current BitField is off, this method returns
+	 * without doing anything. Otherwise, it reads a string from the current
+	 * packet's payload and puts it in the unknown object property map.
+	 */
+	public void readObjectUnknownString(Enum<?> bit) {
+		readObjectUnknownString(bit.ordinal(), bit.name());
+	}
+
+	/**
+	 * Common internal implementation for the public readObjectUnknownString()
+	 * methods.
+	 */
+	private void readObjectUnknownString(int bitIndex, String name) {
+		if (bitField.get(bitIndex)) {
+			int len = readInt();
+			byte[] str = readBytes(len * 2);
+			byte[] bytes = new byte[str.length + 4];
+			bytes[0] = (byte) (0xff & len);
+			bytes[1] = (byte) (0xff & (len >> 8));
+			bytes[2] = (byte) (0xff & (len >> 16));
+			bytes[3] = (byte) (0xff & (len >> 24));
+			System.arraycopy(str, 0, bytes, 4, str.length);
+			unknownObjectProps.put(name, bytes);
 		}
 	}
 
@@ -475,16 +532,16 @@ public class PacketReader {
 
 	/**
 	 * Starts reading an object from an ObjectUpdatingPacket. This will read off
-	 * an object ID (int) and (if a bits enum value array is given) a BitField
-	 * from the current packet's payload. This also clears the
-	 * unknownObjectProps property. The ObjectType is then returned.
+	 * an object ID (int) and (if bitCount is greater than 0) a BitField from
+	 * the current packet's payload. This also clears the unknownObjectProps
+	 * property. The ObjectType is then returned.
 	 */
-	public ObjectType startObject(ObjectType type, Enum<?>[] bits) {
+	public ObjectType startObject(ObjectType type, int bitCount) {
 		objectType = type;
 		objectId = readInt();
 
-		if (bits != null) {
-			bitField = payload.readBitField(bits);
+		if (bitCount != 0) {
+			bitField = payload.readBitField(bitCount);
 		} else {
 			bitField = null;
 		}
@@ -494,10 +551,17 @@ public class PacketReader {
 	}
 
 	/**
-	 * Returns true if the current BitField has the indicated bit turned on.
+	 * Convenience method for has(bit.ordinal).
 	 */
 	public boolean has(Enum<?> bit) {
-		return bitField.get(bit);
+		return has(bit.ordinal());
+	}
+
+	/**
+	 * Returns true if the current BitField has the indicated bit turned on.
+	 */
+	public boolean has(int bitIndex) {
+		return bitField.get(bitIndex);
 	}
 
 	/**

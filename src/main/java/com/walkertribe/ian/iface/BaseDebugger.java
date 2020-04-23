@@ -1,6 +1,6 @@
 package com.walkertribe.ian.iface;
 
-import com.walkertribe.ian.enums.ConnectionType;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.protocol.ArtemisPacket;
 import com.walkertribe.ian.protocol.ArtemisPacketException;
 import com.walkertribe.ian.protocol.RawPacket;
@@ -12,8 +12,7 @@ import com.walkertribe.ian.protocol.RawPacket;
  */
 public class BaseDebugger implements Debugger {
 	@Override
-	public void onRecvPacketBytes(ConnectionType connType, int pktType,
-			byte[] payload) {
+	public void onRecvPacketBytes(Origin origin, int pktType, byte[] payload) {
 		// do nothing
 	}
 
@@ -43,8 +42,7 @@ public class BaseDebugger implements Debugger {
 	}
 
 	@Override
-	public void onSendPacketBytes(ConnectionType connType, int pktType,
-			byte[] payload) {
+	public void onSendPacketBytes(Origin origin, int pktType, byte[] payload) {
 		// do nothing
 	}
 

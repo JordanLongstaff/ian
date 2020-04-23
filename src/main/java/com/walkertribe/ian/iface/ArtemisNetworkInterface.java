@@ -1,6 +1,6 @@
 package com.walkertribe.ian.iface;
 
-import com.walkertribe.ian.enums.ConnectionType;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.protocol.ArtemisPacket;
 import com.walkertribe.ian.protocol.Protocol;
 import com.walkertribe.ian.protocol.core.CoreArtemisProtocol;
@@ -11,21 +11,22 @@ import com.walkertribe.ian.util.Version;
  * receive packets.
  */
 public interface ArtemisNetworkInterface {
-	public static final Version MIN_VERSION = new Version("2.4");
+	public static final Version MIN_VERSION = new Version("2.7");
+	public static final Version MAX_VERSION_EXCLUSIVE = new Version("2.8");
 
 	/**
-     * Returns the ConnectionType of the packets this interface can receive. An
+     * Returns the Origin of the packets this interface can receive. An
      * ArtemisProtocolException will be thrown if it receives a packet of the
      * wrong type.
      */
-    public ConnectionType getRecvType();
+    public Origin getRecvType();
 
     /**
-     * Returns the ConnectionType of the packets this interface can send. An
+     * Returns the Origin of the packets this interface can send. An
      * ArtemisProtocolException will be thrown if it is asked to send a packet
      * of the wrong type.
      */
-    public ConnectionType getSendType();
+    public Origin getSendType();
 
     /**
      * Registers the packet types defined by the given Protocol with this
@@ -56,7 +57,8 @@ public interface ArtemisNetworkInterface {
     public void send(ArtemisPacket pkt);
 
     /**
-     * Closes the connection to the remote machine.
+     * Requests that the interface finish what it is doing and close the
+     * connection to the remote machine.
      */
     public void stop();
 

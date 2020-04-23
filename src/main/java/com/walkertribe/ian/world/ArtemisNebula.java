@@ -1,17 +1,21 @@
 package com.walkertribe.ian.world;
 
+import java.util.SortedMap;
+
 import com.walkertribe.ian.enums.ObjectType;
 
+/**
+ * Nebulae
+ * @author rjwut
+ */
 public class ArtemisNebula extends BaseArtemisObject {
-    private boolean hasColor;
-    private byte a;
-    private byte r;
-    private byte g;
-    private byte b;
+    private float mRed = Float.NaN;
+    private float mGreen = Float.NaN;
+    private float mBlue = Float.NaN;
+    private byte mNebulaType = -1;
 
 	public ArtemisNebula(int objId) {
         super(objId);
-        setName("NEBULA");
     }
 
 	@Override
@@ -19,57 +23,86 @@ public class ArtemisNebula extends BaseArtemisObject {
 		return ObjectType.NEBULA;
 	}
 
-    public boolean hasColor() {
-    	return hasColor;
+    /**
+     * The red channel value for the color. The color is visible on 3D screens; 2D screens use nebula type.
+     * Unspecified: Float.NaN
+     */
+    public float getRed() {
+    	return mRed;
+    }
+
+    public void setRed(float red) {
+    	mRed = red;
     }
 
     /**
-     * The color of the nebula. This is specified as an ARGB int value. To
-     * specify each channel separately, use the setARGB() method.
-     * Unspecified: 0
+     * The green channel value for the color. The color is visible on 3D screens; 2D screens use nebula type.
+     * Unspecified: Float.NaN
      */
-    public int getColor() {
-        return a << 24 | r << 16 | g << 8 | b;
+    public float getGreen() {
+    	return mGreen;
     }
 
-    public byte getAlpha() {
-    	return a;
-    }
-
-    public byte getRed() {
-    	return r;
-    }
-
-    public byte getGreen() {
-    	return g;
-    }
-
-    public byte getBlue() {
-    	return b;
+    public void setGreen(float green) {
+    	mGreen = green;
     }
 
     /**
-     * Sets the color of the nebula, specifying each channel as a value between
-     * 0 and 255.
+     * The blue channel value for the color. The color is visible on 3D screens; 2D screens use nebula type.
+     * Unspecified: Float.NaN
      */
-    public void setARGB(byte a, byte r, byte g, byte b) {
-    	this.a = a;
-    	this.r = r;
-    	this.g = g;
-    	this.b = b;
-    	hasColor = true;
+    public float getBlue() {
+    	return mBlue;
     }
-   
+
+    public void setBlue(float blue) {
+    	mBlue = blue;
+    }
+
     /**
-     * Sets the color that will be used to render this object on sensor views,
-     * specifying each channel as a value between 0 and 1.
+     * The type of nebula this is. This affects the color of the nebula on 2D screens; 3D screens use RGB. The known
+     * nebula types are 1, 2, and 3.
+     * Unspecified: -1
      */
-    public void setARGB(float a, float r, float g, float b) {
-        setARGB(
-            (byte) (255 * a),
-            (byte) (255 * r), 
-            (byte) (255 * g), 
-            (byte) (255 * b)
-        );
+    public byte getNebulaType() {
+    	return mNebulaType;
+    }
+
+    public void setNebulaType(byte nebulaType) {
+    	mNebulaType = nebulaType;
+    }
+
+    @Override
+    public void updateFrom(ArtemisObject other) {
+        super.updateFrom(other);
+
+        if (other instanceof ArtemisNebula) {
+            ArtemisNebula n = (ArtemisNebula) other;
+
+            if (!Float.isNaN(n.mRed)) {
+            	mRed = n.mRed;
+            }
+
+            if (!Float.isNaN(n.mGreen)) {
+            	mGreen = n.mGreen;
+            }
+
+            if (!Float.isNaN(n.mBlue)) {
+            	mBlue = n.mBlue;
+            }
+
+            if (n.mNebulaType != -1) {
+            	mNebulaType = n.mNebulaType;
+            }
+        }
+    }
+
+    @Override
+	public void appendObjectProps(SortedMap<String, Object> props) {
+    	super.appendObjectProps(props);
+    	putProp(props, "Red", mRed);
+    	putProp(props, "Green", mGreen);
+    	putProp(props, "Blue", mBlue);
+    	putProp(props, "Nebula type", mNebulaType, -1);
     }
 }

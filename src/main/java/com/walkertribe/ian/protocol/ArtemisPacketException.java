@@ -1,6 +1,9 @@
 package com.walkertribe.ian.protocol;
 
-import com.walkertribe.ian.enums.ConnectionType;
+import java.io.PrintStream;
+
+import com.walkertribe.ian.enums.Origin;
+import com.walkertribe.ian.util.TextUtil;
 
 /**
  * Thrown when IAN encounters a problem while attempting to read or write a
@@ -9,7 +12,7 @@ import com.walkertribe.ian.enums.ConnectionType;
  */
 public class ArtemisPacketException extends Exception {
     private static final long serialVersionUID = 6305993950844264082L;
-    private ConnectionType connType;
+    private Origin origin;
     private int packetType;
     private byte[] payload;
 
@@ -29,42 +32,40 @@ public class ArtemisPacketException extends Exception {
 
     /**
      * @param string A description of the problem
-     * @param connType The packet's ConnectionType
+     * @param origin The packet's Origin
      */
-    public ArtemisPacketException(String string, ConnectionType connType) {
+    public ArtemisPacketException(String string, Origin origin) {
     	super(string);
-    	this.connType = connType;
+    	this.origin = origin;
     }
 
     /**
      * @param t The exception that caused ArtemisPacketException to be thrown
-     * @param connType The packet's ConnectionType
+     * @param origin The packet's Origin
      * @param packetType The packet's type value
      */
-    public ArtemisPacketException(Throwable t, ConnectionType connType,
+    public ArtemisPacketException(Throwable t, Origin origin,
     		int packetType) {
-        this(t, connType, packetType, null);
+        this(t, origin, packetType, null);
     }
 
     /**
      * @param t The exception that caused ArtemisPacketException to be thrown
-     * @param connType The packet's ConnectionType
+     * @param origin The packet's Origin
      * @param packetType The packet's type value
      * @param payload The packet's payload bytes
      */
-    public ArtemisPacketException(Throwable t, ConnectionType connType,
+    public ArtemisPacketException(Throwable t, Origin origin,
     		int packetType, byte[] payload) {
         super(t);
-        this.connType = connType;
-        this.packetType = packetType;
-        this.payload = payload;
+        appendParsingDetails(origin, packetType, payload);
     }
 
     /**
-     * Returns the packet's ConnectionType, or null if unknown.
+     * Returns the packet's Origin, or null if unknown.
      */
-    public ConnectionType getConnectionType() {
-    	return connType;
+    public Origin getOrigin() {
+    	return origin;
     }
 
     /**
@@ -80,4 +81,45 @@ public class ArtemisPacketException extends Exception {
     public byte[] getPayload() {
     	return payload;
     }
+
+    /**
+     * Adds the Origin, packet type and payload to this exception.
+     */
+    public void appendParsingDetails(Origin origin, int packetType, byte[] payload) {
+        this.origin = origin;
+        this.packetType = packetType;
+        this.payload = payload;
+    }
+
+    /**
+     * Dumps the packet bytes to System.err.
+     */
+    public void printPacketDump() {
+    	printPacketDump(System.err);
+    }
+
+    /**
+     * Dumps the packet bytes to the given PrintStream.
+     */
+    public void printPacketDump(PrintStream err) {
+		err.println(origin + ": " + TextUtil.intToHex(packetType) + " " +
+				(payload == null ? "" : TextUtil.byteArrayToHexString(payload))
+		);
+    }
+
+    /**
+     * Convert the data in this exception to an UnknownPacket. An
+     * IllegalStateException will occur if the Origin or payload is null.
+     */
+	public UnknownPacket toUnknownPacket() {
+		if (origin == null) {
+			throw new IllegalStateException("Unknown origin");
+		}
+
+		if (payload == null) {
+			throw new IllegalStateException("Unknown payload");
+		}
+
+		return new UnknownPacket(origin, packetType, payload);
+	}
 }

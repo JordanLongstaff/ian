@@ -8,11 +8,10 @@ import java.util.Set;
 
 import com.walkertribe.ian.Context;
 import com.walkertribe.ian.enums.OrdnanceType;
-import com.walkertribe.ian.enums.VesselAttribute;
 import com.walkertribe.ian.model.Model;
 
 /**
- * Corresponds to the <vessel> element in vesselData.xml. Note that this
+ * Corresponds to the &lt;vessel&gt; element in vesselData.xml. Note that this
  * represents an entire class of ships, not an individual one.
  * @author rjwut
  */
@@ -22,7 +21,7 @@ public class Vessel {
 	private int side;
 	private String name;
 	String description;
-	private Set<VesselAttribute> attributes;
+	private Set<String> attributes;
 	List<Art> artList = new ArrayList<Art>();
 	private String dxsPaths;
 	String internalDataFile;
@@ -33,8 +32,11 @@ public class Vessel {
 	int playerShields;
 	float turnRate;
 	float topSpeed;
-	float efficiency;
+	float shipEfficiency;
+	float warpEfficiency;
+	float jumpEfficiency;
 	int fleetAiCommonality;
+	int bayCount;
 	int fighterCount;
 	int bomberCount;
 	float productionCoeff;
@@ -96,18 +98,18 @@ public class Vessel {
 	}
 
 	/**
-	 * Returns an array of this Vessel's VesselAttributes.
+	 * Returns an array of this Vessel's attributes.
 	 */
-	public VesselAttribute[] getAttributes() {
-		return attributes.toArray(new VesselAttribute[attributes.size()]);
+	public String[] getAttributes() {
+		return attributes.toArray(new String[attributes.size()]);
 	}
 
 	/**
-	 * Returns true if this Vessel has all the given VesselAttributes; false
+	 * Returns true if this Vessel has all the given attributes; false
 	 * otherwise.
 	 */
-	public boolean is(VesselAttribute... attrs) {
-		for (VesselAttribute attr : attrs) {
+	public boolean is(String... attrs) {
+		for (String attr : attrs) {
 			if (!attributes.contains(attr)) {
 				return false;
 			}
@@ -197,7 +199,7 @@ public class Vessel {
 
 	/**
 	 * Returns the initial strength of this Vessel's "player" shields. (This
-	 * appears to only apply to fighters.)
+	 * appears to only apply to single-seat craft.)
 	 */
 	public int getPlayerShields() {
 		return playerShields;
@@ -220,8 +222,22 @@ public class Vessel {
 	/**
 	 * Returns this Vessel's efficiency rating.
 	 */
-	public float getEfficiency() {
-		return efficiency;
+	public float getShipEfficiency() {
+		return shipEfficiency;
+	}
+
+	/**
+	 * Returns this Vessel's warp efficiency rating.
+	 */
+	public float getWarpEfficiency() {
+		return warpEfficiency;
+	}
+
+	/**
+	 * Returns this Vessel's jump efficiency rating.
+	 */
+	public float getJumpEfficiency() {
+		return jumpEfficiency;
 	}
 
 	/**
@@ -233,19 +249,26 @@ public class Vessel {
 	}
 
 	/**
-	 * Returns the number of fighters this Vessel has. Only Vessels that were
-	 * declared with the <carrierload> (player ships) or <carrier> (enemy ships)
-	 * elements will have fighters. Note that a vessel does not have to have
-	 * VesselAttribute.CARRIER to have fighters.
+	 * Returns the number of bays this Vessel has. Only Vessels that were declared with the
+	 * &lt;carrierload&gt; element will have bays. Note that a vessel does not have to have
+	 * VesselAttribute.CARRIER to have bays.
+	 */
+	public int getBayCount() {
+		return fighterCount;
+	}
+
+	/**
+	 * Returns the number of fighters this Vessel has. Only Vessels that were declared with the
+	 * &lt;carrierload&gt; (player ships) elements will have fighters. Note that a vessel does
+	 * not have to have VesselAttribute.CARRIER to have fighters.
 	 */
 	public int getFighterCount() {
 		return fighterCount;
 	}
 
 	/**
-	 * Returns the number of bombers this Vessel has. Only Vessels that were
-	 * declared with the <carrierload> element will have bombers. As of this
-	 * writing, the only Vessel to have bombers is the TSN Medium Carrier.
+	 * Returns the number of bombers this Vessel has. Only Vessels that were declared with the
+	 * &lt;carrierload&gt; element will have bombers.
 	 */
 	public int getBomberCount() {
 		return bomberCount;
@@ -286,9 +309,9 @@ public class Vessel {
 	/**
 	 * Returns true if this Vessel is capable of launching ordnance; false
 	 * otherwise. To launch ordnance, a player Vessel must storage space for at
-	 * least one torpedo and have at least one torpedo tube or be a fighter
-	 * (which doesn't use the tube loading/unloading system). Other Vessel types
-	 * must have at least one drone port or base torpedo port.
+	 * least one torpedo and have at least one torpedo tube or be a single-seat
+	 * craft (which doesn't use the tube loading/unloading system). Other
+	 * Vessel types must have at least one drone port or base torpedo port.
 	 */
 	public boolean canLaunchOrdnance() {
 		if (is(VesselAttribute.PLAYER)) {

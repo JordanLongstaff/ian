@@ -1,42 +1,26 @@
 package com.walkertribe.ian.protocol.core;
 
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.ValueIntPacket.SubType;
 
 /**
  * Sends a keystroke to the server. This should only be done for the game master
  * console, or if keystroke capture has been enabled via the
- * KeyCaptureTogglePacket.
+ * KeyCaptureTogglePacket. The Java AWT
+ * <a href="https://docs.oracle.com/javase/6/docs/api/java/awt/event/KeyEvent.html">KeyEvent class</a>
+ * has constants for the keycodes used by this class.
  * @author rjwut
- * @see {@link java.awt.event.KeyEvent} (for constants)
  */
-public class KeystrokePacket extends ShipActionPacket {
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.CLIENT, TYPE, TYPE_KEYSTROKE,
-				new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return KeystrokePacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new KeystrokePacket(reader);
-			}
-		});
-	}
-
+@Packet(origin = Origin.CLIENT, type = CorePacketType.VALUE_INT, subtype = SubType.KEYSTROKE)
+public class KeystrokePacket extends ValueIntPacket {
 	public KeystrokePacket(int keycode) {
-		super(TYPE_KEYSTROKE, keycode);
+		super(keycode);
 	}
 
-	private KeystrokePacket(PacketReader reader) {
-		super(TYPE_KEYSTROKE, reader);
+	public KeystrokePacket(PacketReader reader) {
+		super(reader);
 	}
 
 	/**

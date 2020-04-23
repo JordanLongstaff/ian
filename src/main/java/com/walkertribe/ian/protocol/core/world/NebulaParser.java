@@ -6,6 +6,10 @@ import com.walkertribe.ian.iface.PacketWriter;
 import com.walkertribe.ian.world.ArtemisNebula;
 import com.walkertribe.ian.world.ArtemisObject;
 
+/**
+ * ObjectParser implementation for nebulae
+ * @author rjwut
+ */
 public class NebulaParser extends AbstractObjectParser {
 	private enum Bit {
     	X,
@@ -14,47 +18,41 @@ public class NebulaParser extends AbstractObjectParser {
     	RED,
     	GREEN,
     	BLUE,
-    	UNK_1_7,
-    	UNK_1_8
+    	TYPE;
     }
-	private static final Bit[] BITS = Bit.values();
+	private static final int BIT_COUNT = Bit.values().length;
 
 	NebulaParser() {
 		super(ObjectType.NEBULA);
 	}
 
 	@Override
-	public Bit[] getBits() {
-		return BITS;
+	public int getBitCount() {
+		return BIT_COUNT;
 	}
 
 	@Override
 	protected ArtemisNebula parseImpl(PacketReader reader) {
         final ArtemisNebula obj = new ArtemisNebula(reader.getObjectId());
-		reader.readObjectUnknown(Bit.UNK_1_7, 4);
-		reader.readObjectUnknown(Bit.UNK_1_8, 4);
-        obj.setX(reader.readFloat(Bit.X, Float.MIN_VALUE));
-        obj.setY(reader.readFloat(Bit.Y, Float.MIN_VALUE));
-        obj.setZ(reader.readFloat(Bit.Z, Float.MIN_VALUE));
-        obj.setARGB(
-        		0,
-        		reader.readFloat(Bit.RED, Float.MIN_VALUE),
-        		reader.readFloat(Bit.GREEN, Float.MIN_VALUE),
-        		reader.readFloat(Bit.BLUE, Float.MIN_VALUE)
-        );
+        obj.setX(reader.readFloat(Bit.X));
+        obj.setY(reader.readFloat(Bit.Y));
+        obj.setZ(reader.readFloat(Bit.Z));
+        obj.setRed(reader.readFloat(Bit.RED));
+        obj.setGreen(reader.readFloat(Bit.GREEN));
+        obj.setBlue(reader.readFloat(Bit.BLUE));
+        obj.setNebulaType(reader.readByte(Bit.TYPE, (byte) -1));
         return obj;
 	}
 
 	@Override
 	public void write(ArtemisObject obj, PacketWriter writer) {
 		ArtemisNebula nObj = (ArtemisNebula) obj;
-    	writer	.writeFloat(Bit.X, nObj.getX(), Float.MIN_VALUE)
-				.writeFloat(Bit.Y, nObj.getY(), Float.MIN_VALUE)
-				.writeFloat(Bit.Z, nObj.getZ(), Float.MIN_VALUE)
-				.writeFloat(Bit.RED, nObj.getRed() / 255f, Float.MIN_VALUE)
-				.writeFloat(Bit.GREEN, nObj.getGreen() / 255f, Float.MIN_VALUE)
-				.writeFloat(Bit.BLUE, nObj.getBlue() / 255f, Float.MIN_VALUE)
-				.writeUnknown(Bit.UNK_1_7)
-				.writeUnknown(Bit.UNK_1_8);
+    	writer	.writeFloat(Bit.X, nObj.getX())
+				.writeFloat(Bit.Y, nObj.getY())
+				.writeFloat(Bit.Z, nObj.getZ())
+				.writeFloat(Bit.RED, nObj.getRed())
+				.writeFloat(Bit.GREEN, nObj.getGreen())
+				.writeFloat(Bit.BLUE, nObj.getBlue())
+				.writeByte(Bit.TYPE, nObj.getNebulaType(), (byte) -1);
 	}
 }

@@ -7,14 +7,13 @@ import java.util.List;
 import java.util.Map.Entry;
 import java.util.Set;
 
-import com.walkertribe.ian.Context;
 import com.walkertribe.ian.enums.ObjectType;
 import com.walkertribe.ian.enums.ShipSystem;
 import com.walkertribe.ian.iface.Listener;
 import com.walkertribe.ian.protocol.core.eng.EngGridUpdatePacket;
 import com.walkertribe.ian.protocol.core.eng.EngGridUpdatePacket.DamconStatus;
 import com.walkertribe.ian.protocol.core.eng.EngGridUpdatePacket.GridDamage;
-import com.walkertribe.ian.protocol.core.world.DestroyObjectPacket;
+import com.walkertribe.ian.protocol.core.world.DeleteObjectPacket;
 import com.walkertribe.ian.protocol.core.world.IntelPacket;
 import com.walkertribe.ian.protocol.core.world.ObjectUpdatePacket;
 import com.walkertribe.ian.util.GridCoord;
@@ -40,7 +39,6 @@ public class SystemManager {
 
     private static final boolean DEBUG = false;
 
-    private final Context mCtx;
     private final HashMap<Integer, ArtemisObject> mObjects = 
             new HashMap<Integer, ArtemisObject>();
     private OnObjectCountChangeListener mListener = sDummyListener;
@@ -53,8 +51,7 @@ public class SystemManager {
     
     private final ArtemisPlayer[] mPlayers = new ArtemisPlayer[Artemis.SHIP_COUNT];
     
-    public SystemManager(Context ctx) {
-    	mCtx = ctx;
+    public SystemManager() {
         clear();
     }
     
@@ -68,7 +65,7 @@ public class SystemManager {
     }
 
     @Listener
-    public void onPacket(DestroyObjectPacket pkt) {
+    public void onPacket(DeleteObjectPacket pkt) {
         synchronized(this) {
             mObjects.remove(Integer.valueOf(pkt.getTarget()));
         }
@@ -123,10 +120,10 @@ public class SystemManager {
 
     @Listener
     public void onPacket(IntelPacket pkt) {
-    	ArtemisNpc npc = (ArtemisNpc) mObjects.get(Integer.valueOf(pkt.getId()));
+    	ArtemisObject obj = mObjects.get(Integer.valueOf(pkt.getId()));
 
-    	if (npc != null) {
-    		npc.setIntel(pkt.getIntel());
+    	if (obj != null) {
+    		pkt.applyTo(obj);
     	}
     }
 
@@ -136,16 +133,16 @@ public class SystemManager {
         ArtemisObject p = mObjects.get(id);
 
         if (p != null) {
-            p.updateFrom(o, mCtx);
+            p.updateFrom(o);
             
             if (o instanceof ArtemisPlayer) {
-                // just in case we get the ship number AFTER
+                // just in case we get the ship index AFTER
                 //  first creating the object, we store the
-                //  updated ORIGINAL with the new ship number
+                //  updated ORIGINAL with the new ship index
                 ArtemisPlayer plr = (ArtemisPlayer) o;
 
-                if (plr.getShipNumber() != -1) {
-                    mPlayers[plr.getShipNumber() - 1] = (ArtemisPlayer) p;
+                if (plr.getShipIndex() != -1) {
+                    mPlayers[plr.getShipIndex()] = (ArtemisPlayer) p;
                 }
             }
             
@@ -159,8 +156,8 @@ public class SystemManager {
         if (o instanceof ArtemisPlayer) {
             ArtemisPlayer plr = (ArtemisPlayer) o;
 
-            if (plr.getShipNumber() >= 0) {
-                mPlayers[plr.getShipNumber() - 1] = plr;
+            if (plr.getShipIndex() >= 0) {
+                mPlayers[plr.getShipIndex()] = plr;
             }
         }
 
@@ -188,10 +185,6 @@ public class SystemManager {
 
     /**
      * Add objects of the given type to the given list 
-     * 
-     * @param dest
-     * @param type One of the ArtemisObject#TYPE_* constants
-     * @return The number of objects added to "dest"
      */
     public synchronized int getObjects(List<ArtemisObject> dest, ObjectType type) {
         int count = 0;
@@ -212,7 +205,6 @@ public class SystemManager {
      *  
      * @param type
      * @return
-     * @see #getObjects(List, int)
      */
     public List<ArtemisObject> getObjects(ObjectType type) {
         List<ArtemisObject> objs = new ArrayList<ArtemisObject>();
@@ -225,16 +217,16 @@ public class SystemManager {
     }
     
     /**
-     * Get the player ship by number. Ship values range from 1 to 8.
-     * @param shipNumber
+     * Get the player ship by index. Ship values range from 0 to 7.
+     * @param shipIndex
      * @return
      */
-    public ArtemisPlayer getPlayerShip(int shipNumber) {
-        if (shipNumber < 1 || shipNumber > 8) {
-            throw new IllegalArgumentException("Invalid ship number: " + shipNumber);
+    public ArtemisPlayer getPlayerShip(int shipIndex) {
+        if (shipIndex < 0 || shipIndex >= Artemis.SHIP_COUNT) {
+            throw new IllegalArgumentException("Invalid ship index: " + shipIndex);
         }
         
-        return mPlayers[shipNumber - 1];
+        return mPlayers[shipIndex];
     }
     
     /**
@@ -305,7 +297,7 @@ public class SystemManager {
     
     /**
      * Get the first object with the given name
-     * @param type
+     * @param name
      * @return null if no such object or if name is null
      */
     public synchronized ArtemisObject getObjectByName(final String name) {

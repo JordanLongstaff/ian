@@ -1,39 +1,19 @@
 package com.walkertribe.ian.protocol.core.eng;
 
-import com.walkertribe.ian.enums.ConnectionType;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.enums.ShipSystem;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
 import com.walkertribe.ian.protocol.BaseArtemisPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
 
 /**
  * Set the amount of coolant in a system.
  * @author dhleong
  */
+@Packet(origin = Origin.CLIENT, type = CorePacketType.VALUE_FOUR_INTS, subtype = 0x00)
 public class EngSetCoolantPacket extends BaseArtemisPacket {
-    private static final int TYPE = 0x69CC01D9;
-    private static final byte SUBTYPE = 0x00;
-
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.CLIENT, TYPE, SUBTYPE,
-				new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return EngSetCoolantPacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new EngSetCoolantPacket(reader);
-			}
-		});
-	}
-
     private ShipSystem mSystem;
     private int mCoolant;
 
@@ -42,8 +22,6 @@ public class EngSetCoolantPacket extends BaseArtemisPacket {
      * @param coolant The amount of coolant to allocate
      */
     public EngSetCoolantPacket(ShipSystem system, int coolant) {
-        super(ConnectionType.CLIENT, TYPE);
-
         if (system == null) {
         	throw new IllegalArgumentException("You must provide a system");
         }
@@ -58,24 +36,29 @@ public class EngSetCoolantPacket extends BaseArtemisPacket {
         mCoolant = coolant;
     }
 
-    private EngSetCoolantPacket(PacketReader reader) {
-        super(ConnectionType.CLIENT, TYPE);
+    public EngSetCoolantPacket(PacketReader reader) {
         reader.skip(4); // subtype
     	mSystem = ShipSystem.values()[reader.readInt()];
     	mCoolant = reader.readInt();
     }
 
+    /**
+     * The ship system whose coolant level is being set.
+     */
     public ShipSystem getSystem() {
     	return mSystem;
     }
 
+    /**
+     * The amount of coolant to allocate to this ship system.
+     */
     public int getCoolant() {
     	return mCoolant;
     }
 
     @Override
 	protected void writePayload(PacketWriter writer) {
-    	writer	.writeInt(SUBTYPE)
+    	writer	.writeInt(0x00) // subtype
     			.writeInt(mSystem.ordinal())
     			.writeInt(mCoolant);
 	}

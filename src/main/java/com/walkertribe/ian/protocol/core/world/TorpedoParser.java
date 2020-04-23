@@ -1,64 +1,71 @@
 package com.walkertribe.ian.protocol.core.world;
 
 import com.walkertribe.ian.enums.ObjectType;
+import com.walkertribe.ian.enums.OrdnanceType;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.world.ArtemisGenericObject;
 import com.walkertribe.ian.world.ArtemisObject;
+import com.walkertribe.ian.world.ArtemisTorpedo;
 
+/**
+ * ObjectParser implementation for torpedoes
+ * @author rjwut
+ */
 public class TorpedoParser extends AbstractObjectParser {
 	private enum Bit {
     	X,
     	Y,
     	Z,
-    	NAME,
-    	UNK_1_5,
-    	UNK_1_6,
+    	DELTA_X,
+    	DELTA_Y,
+    	DELTA_Z,
     	UNK_1_7,
-    	UNK_1_8
+    	ORDNANCE_TYPE
     }
-	private static final Bit[] BITS = Bit.values();
-	private static final byte[] UNK_TORPEDO = { 0 };
+	private static final int BIT_COUNT = Bit.values().length;
 
 	TorpedoParser() {
 		super(ObjectType.TORPEDO);
 	}
 
 	@Override
-	public Bit[] getBits() {
-		return BITS;
+	public int getBitCount() {
+		return BIT_COUNT;
 	}
 
 	@Override
-	protected ArtemisGenericObject parseImpl(PacketReader reader) {
-        reader.readObjectUnknown("UNK_TORPEDO", 1);
-        float x = reader.readFloat(Bit.X, Float.MIN_VALUE);
-        float y = reader.readFloat(Bit.Y, Float.MIN_VALUE);
-        float z = reader.readFloat(Bit.Z, Float.MIN_VALUE);
-        reader.readObjectUnknown(Bit.NAME, 4);
-        final ArtemisGenericObject obj = new ArtemisGenericObject(reader.getObjectId());
-        obj.setType(ObjectType.TORPEDO);
-        obj.setX(x);
-        obj.setY(y);
-        obj.setZ(z);
-        reader.readObjectUnknown(Bit.UNK_1_5, 4);
-        reader.readObjectUnknown(Bit.UNK_1_6, 4);
+	protected ArtemisTorpedo parseImpl(PacketReader reader) {
+        final ArtemisTorpedo obj = new ArtemisTorpedo(reader.getObjectId());
+        obj.setX(reader.readFloat(Bit.X));
+        obj.setY(reader.readFloat(Bit.Y));
+        obj.setZ(reader.readFloat(Bit.Z));
+        obj.setDx(reader.readFloat(Bit.DELTA_X));
+        obj.setDy(reader.readFloat(Bit.DELTA_Y));
+        obj.setDz(reader.readFloat(Bit.DELTA_Z));
         reader.readObjectUnknown(Bit.UNK_1_7, 4);
-        reader.readObjectUnknown(Bit.UNK_1_8, 4);
+
+        if (reader.has(Bit.ORDNANCE_TYPE)) {
+            obj.setOrdnanceType(OrdnanceType.values()[reader.readInt()]);
+        }
+
         return obj;
 	}
 
 	@Override
 	public void write(ArtemisObject obj, PacketWriter writer) {
-		ArtemisGenericObject gObj = (ArtemisGenericObject) obj;
-        writer.writeUnknown("UNK_TORPEDO", UNK_TORPEDO);
-    	writer	.writeFloat(Bit.X, gObj.getX(), Float.MIN_VALUE)
-				.writeFloat(Bit.Y, gObj.getY(), Float.MIN_VALUE)
-				.writeFloat(Bit.Z, gObj.getZ(), Float.MIN_VALUE);
-    	writer	.writeUnknown(Bit.NAME)
-        		.writeUnknown(Bit.UNK_1_5)
-				.writeUnknown(Bit.UNK_1_6)
-				.writeUnknown(Bit.UNK_1_7)
-				.writeUnknown(Bit.UNK_1_8);
+		ArtemisTorpedo t = (ArtemisTorpedo) obj;
+    	writer	.writeFloat(Bit.X, t.getX())
+				.writeFloat(Bit.Y, t.getY())
+				.writeFloat(Bit.Z, t.getZ())
+				.writeFloat(Bit.DELTA_X, t.getDx())
+				.writeFloat(Bit.DELTA_Y, t.getDy())
+				.writeFloat(Bit.DELTA_Z, t.getDz())
+				.writeUnknown(Bit.UNK_1_7);
+
+    	OrdnanceType ordType = t.getOrdnanceType();
+
+    	if (ordType != null) {
+        	writer.writeInt(Bit.ORDNANCE_TYPE, ordType.ordinal(), -1);
+    	}
 	}
 }

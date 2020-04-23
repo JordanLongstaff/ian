@@ -3,59 +3,42 @@ package com.walkertribe.ian.protocol.core.eng;
 import java.util.ArrayList;
 import java.util.List;
 
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
 import com.walkertribe.ian.protocol.BaseArtemisPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
 import com.walkertribe.ian.util.GridCoord;
 
 /**
- * Updates damage to the various system grids on the ship, as well as DamCon
+ * Updates damage to the various system grids on the ship, as well as DAMCON
  * team status/location.
  * @author dhleong
  */
+@Packet(origin = Origin.SERVER, type = CorePacketType.SHIP_SYSTEM_SYNC)
 public class EngGridUpdatePacket extends BaseArtemisPacket {
-    private static final int TYPE = 0x77e9f3c;
-
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.SERVER, TYPE, new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return EngGridUpdatePacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new EngGridUpdatePacket(reader);
-			}
-		});
-	}
-
     private static final byte END_GRID_MARKER = (byte) 0xff;
     private static final byte END_DAMCON_MARKER = (byte) 0xfe;
     private static final int TEAM_NUMBER_OFFSET = 0x0a;
     private static final float PROGRESS_EPSILON = 0.001f;
 
+    private boolean mRequested;
     private List<GridDamage> mDamage = new ArrayList<GridDamage>();
     private List<DamconStatus> mDamconUpdates = new ArrayList<DamconStatus>();
 
     /**
      * Creates a new EngGridUpdatePacket with no updates. Use the
      * addDamageUpdate() and addDamconUpdate() methods to add update information
-     * to this packet.
+     * to this packet. The requested parameter indicates whether this packet is
+     * being sent in response to a {@link EngRequestGridUpdatePacket} packet.
      */
-    public EngGridUpdatePacket() {
-        super(ConnectionType.SERVER, TYPE);
+    public EngGridUpdatePacket(boolean requested) {
+        mRequested = requested;
     }
 
-    private EngGridUpdatePacket(PacketReader reader) {
-        super(ConnectionType.SERVER, TYPE);
-        reader.readUnknown("Unknown", 1);
+    public EngGridUpdatePacket(PacketReader reader) {
+        mRequested = reader.readByte() == 1;
 
         while (reader.peekByte() != END_GRID_MARKER) {
             GridCoord coord = GridCoord.getInstance(
@@ -85,6 +68,13 @@ public class EngGridUpdatePacket extends BaseArtemisPacket {
         }
 
         reader.skip(1); // read the 0xfe byte
+    }
+
+    /**
+     * Returns true if this update was requested by the client.
+     */
+    public boolean isRequested() {
+    	return mRequested;
     }
 
     /**
@@ -121,7 +111,7 @@ public class EngGridUpdatePacket extends BaseArtemisPacket {
 
 	@Override
 	protected void writePayload(PacketWriter writer) {
-		writer.writeByte((byte) 1); // unknown
+		writer.writeByte((byte) (mRequested ? 1 : 0));
 
 		for (GridDamage damage : mDamage) {
 			GridCoord coord = damage.coord;
@@ -180,7 +170,7 @@ public class EngGridUpdatePacket extends BaseArtemisPacket {
         private final GridCoord coord;
         private final float damage;
 
-        private GridDamage(GridCoord coord, float damage) {
+        GridDamage(GridCoord coord, float damage) {
             this.coord = coord;
             this.damage = damage;
         }
@@ -227,8 +217,8 @@ public class EngGridUpdatePacket extends BaseArtemisPacket {
         private GridCoord goal;
         private GridCoord pos;
         private float progress;
-        
-        public DamconStatus(int teamNumber, int members, int xGoal,
+
+        DamconStatus(int teamNumber, int members, int xGoal,
                 int yGoal, int zGoal, int x, int y, int z, float progress) {
             this.teamNumber = teamNumber;
             this.members = members;

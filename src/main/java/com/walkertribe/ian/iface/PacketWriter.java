@@ -5,35 +5,40 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.SortedMap;
 
-import com.walkertribe.ian.enums.ConnectionType;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.enums.ObjectType;
 import com.walkertribe.ian.protocol.ArtemisPacket;
 import com.walkertribe.ian.util.BitField;
 import com.walkertribe.ian.util.BoolState;
+import com.walkertribe.ian.util.NullTerminatedString;
 import com.walkertribe.ian.util.Util;
 import com.walkertribe.ian.util.Version;
 import com.walkertribe.ian.world.ArtemisObject;
 
 /**
+ * <p>
  * Facilitates writing packets to an OutputStream. This object may be reused to
  * write as many packets as desired to a single OutputStream. To write a packet,
  * follow these steps:
- * 
- * 1. Invoke start().
- * 2. Write the payload data using the write*() methods. Payload data is
- *    buffered by the PacketWriter, not written immediately to the OutputStream.
- * 3. Invoke flush(). The proper values for the fields in the preamble will be
- *    automatically computed and written, followed by the payload. The entire
- *    packet is then flushed to the OutputStream.
- * 
+ * </p>
+ * <ol>
+ * <li>Invoke start().</li>
+ * <li>Write the payload data using the write*() methods. Payload data is
+ * buffered by the PacketWriter, not written immediately to the
+ * OutputStream.</li>
+ * <li>Invoke flush(). The proper values for the fields in the preamble will be
+ * automatically computed and written, followed by the payload. The entire
+ * packet is then flushed to the OutputStream.</li>
+ * </ol>
+ * <p>
  * Once flush() has been called, you can start writing another packet by
  * invoking start() again.
- * 
+ * </p>
  * @author rjwut
  */
 public class PacketWriter {
 	private final OutputStream out;
-	private ConnectionType mConnType;
+	private Origin mOrigin;
 	private Version version;
 
 	private int mPacketType;
@@ -74,33 +79,29 @@ public class PacketWriter {
 	/**
 	 * Starts a packet of the given type.
 	 */
-	public PacketWriter start(ConnectionType connType, int packetType) {
-		mConnType = connType;
+	public PacketWriter start(Origin origin, int packetType) {
+		mOrigin = origin;
 		mPacketType = packetType;
 		baos = new ByteArrayOutputStream();
 		return this;
 	}
 
 	/**
-	 * Convenience method for startObject(object, object.getType(), bits).
+	 * Convenience method for startObject(object, bits.length).
 	 */
-	public PacketWriter startObject(ArtemisObject object, Enum<?>[] bits) {
-		return startObject(object, object.getType(), bits);
+	public PacketWriter startObject(ArtemisObject object, ObjectType type, Enum<?>[] bits) {
+		return startObject(object, type, bits.length);
 	}
 
 	/**
 	 * Starts writing a new entry into the packet for the given object,
-	 * overriding the object's type with the specified ObjectType. If object
-	 * entries for this packet have bit fields, an array of the possible enum
-	 * values (not just the ones in this packet) should be provided; otherwise,
-	 * the bits argument should be null.
+	 * overriding the object's type with the specified ObjectType.
 	 */
-	public PacketWriter startObject(ArtemisObject object, ObjectType type,
-			Enum<?>[] bits) {
+	public PacketWriter startObject(ArtemisObject object, ObjectType type, int bitFieldSize) {
 		assertStarted();
 		obj = object;
 		objType = type;
-		bitField = new BitField(bits);
+		bitField = new BitField(bitFieldSize);
 		baosObj = new ByteArrayOutputStream();
 		return this;
 	}
@@ -115,13 +116,10 @@ public class PacketWriter {
 	}
 
 	/**
-	 * Writes a single byte for the current object. You must invoke
-	 * startObject() before calling this method.
+	 * Convenience method for writeByte(bit.ordinal(), v, defaultValue).
 	 */
-	public PacketWriter writeObjByte(byte v) {
-		assertObjectStarted();
-		baosObj.write(v);
-		return this;
+	public PacketWriter writeByte(Enum<?> bit, byte v, byte defaultValue) {
+		return writeByte(bit.ordinal(), v, defaultValue);
 	}
 
 	/**
@@ -130,15 +128,30 @@ public class PacketWriter {
 	 * otherwise, nothing happens. You must invoke startObject() before calling
 	 * this method.
 	 */
-	public PacketWriter writeByte(Enum<?> bit, byte v, byte defaultValue) {
+	public PacketWriter writeByte(int bitIndex, byte v, byte defaultValue) {
 		assertObjectStarted();
 
 		if (v != defaultValue) {
-			bitField.set(bit, true);
+			bitField.set(bitIndex, true);
 			baosObj.write(v);
 		}
 
 		return this;
+	}
+
+	/**
+	 * Writes a BoolState.
+	 */
+	public PacketWriter writeBool(BoolState v, int byteCount) {
+		writeBytes(v.toByteArray(byteCount));
+		return this;
+	}
+
+	/**
+	 * Convenience method for writeBool(bit.ordinal(), v, byteCount).
+	 */
+	public PacketWriter writeBool(Enum<?> bit, BoolState v, int byteCount) {
+		return writeBool(bit.ordinal(), v, byteCount);
 	}
 
 	/**
@@ -147,20 +160,8 @@ public class PacketWriter {
 	 * field is set; otherwise, nothing happens. You must invoke startObject()
 	 * before calling this method.
 	 */
-	public PacketWriter writeBool(Enum<?> bit, BoolState v, int byteCount) {
-		assertObjectStarted();
-
-		if (!BoolState.isKnown(v)) {
-			return this;
-		}
-
-		buffer[0] = (byte) (v.getBooleanValue() ? 1 : 0);
-
-		for (int i = 1; i < byteCount; i++) {
-			buffer[i] = 0;
-		}
-
-		baosObj.write(buffer, 0, byteCount);
+	public PacketWriter writeBool(int bitIndex, BoolState v, int byteCount) {
+		writeBytes(bitIndex, v.toByteArray(byteCount));
 		return this;
 	}
 
@@ -175,16 +176,23 @@ public class PacketWriter {
 	}
 
 	/**
+	 * Convenience method for writeShort(bit.ordinal(), v, defaultValue).
+	 */
+	public PacketWriter writeShort(Enum<?> bit, int v, int defaultValue) {
+		return writeShort(bit.ordinal(), v, defaultValue);
+	}
+
+	/**
 	 * If the given int is different from defaultValue, the int is coerced to a
 	 * short and written to the packet, and the corresponding bit in the
 	 * object's bit field is set; otherwise, nothing happens. You must invoke
 	 * startObject() before calling this method.
 	 */
-	public PacketWriter writeShort(Enum<?> bit, int v, int defaultValue) {
+	public PacketWriter writeShort(int bitIndex, int v, int defaultValue) {
 		assertObjectStarted();
 
 		if (v != defaultValue) {
-			bitField.set(bit, true);
+			bitField.set(bitIndex, true);
 			writeShort(v, baosObj);
 		}
 
@@ -202,16 +210,23 @@ public class PacketWriter {
 	}
 
 	/**
+	 * Convenience method for writeInt(bit.ordinal(), v, defaultValue).
+	 */
+	public PacketWriter writeInt(Enum<?> bit, int v, int defaultValue) {
+		return writeInt(bit.ordinal(), v, defaultValue);
+	}
+
+	/**
 	 * If the given int is different from defaultValue, the int is written to
 	 * the packet, and the corresponding bit in the object's bit field is set;
 	 * otherwise, nothing happens. You must invoke startObject() before calling
 	 * this method.
 	 */
-	public PacketWriter writeInt(Enum<?> bit, int v, int defaultValue) {
+	public PacketWriter writeInt(int bitIndex, int v, int defaultValue) {
 		assertObjectStarted();
 
 		if (v != defaultValue) {
-			bitField.set(bit, true);
+			bitField.set(bitIndex, true);
 			writeInt(v, baosObj);
 		}
 
@@ -227,33 +242,63 @@ public class PacketWriter {
 	}
 
 	/**
-	 * If the given float is different from defaultValue, the float is written
-	 * to the packet, and the corresponding bit in the object's bit field is
-	 * set; otherwise, nothing happens. You must invoke startObject() before
-	 * calling this method.
+	 * Convenience method for writeFloat(bit.ordinal(), v).
 	 */
-	public PacketWriter writeFloat(Enum<?> bit, float v, float defaultValue) {
-		return writeInt(
-				bit,
-				Float.floatToRawIntBits(v),
-				Float.floatToRawIntBits(defaultValue)
-		);
+	public PacketWriter writeFloat(Enum<?> bit, float v) {
+		return writeFloat(bit.ordinal(), v);
 	}
 
 	/**
-	 * Writes a UTF-16LE encoded String. This handles writing the string length
-	 * and the terminating null character automatically. You must invoke start()
-	 * before calling this method.
+	 * If the given float is not a NaN, the float is written to the packet, and
+	 * the corresponding bit in the object's bit field is set; otherwise,
+	 * nothing happens. You must invoke startObject() before calling this
+	 * method.
 	 */
-	public PacketWriter writeString(String str) {
+	public PacketWriter writeFloat(int bitIndex, float v) {
+		assertObjectStarted();
+
+		if (!Float.isNaN(v)) {
+			bitField.set(bitIndex, true);
+			writeInt(Float.floatToRawIntBits(v), baosObj);
+		}
+
+		return this;
+	}
+
+	/**
+	 * Unconditionally write a float to the packet for the current object. This
+	 * is needed in cases where the server can possibly send NaN for a property
+	 * value.
+	 */
+	public PacketWriter writeObjectFloat(Enum<?> bit, float v) {
+		return writeObjectFloat(bit.ordinal(), v);
+	}
+
+	/**
+	 * Unconditionally write a float to the packet for the current object. This
+	 * is needed in cases where the server can possibly send NaN for a property
+	 * value.
+	 */
+	public PacketWriter writeObjectFloat(int bitIndex, float v) {
+		assertObjectStarted();
+		bitField.set(bitIndex, true);
+		writeInt(Float.floatToRawIntBits(v), baosObj);
+		return this;
+	}
+
+	/**
+	 * Writes a UTF-16LE encoded CharSequence. This handles writing the
+	 * string length and the terminating null character automatically. You must
+	 * invoke start() before calling this method.
+	 */
+	public PacketWriter writeString(CharSequence str) {
 		writeString(str, baos);
 		return this;
 	}
 
 	/**
 	 * Writes a US-ASCII encoded String. This handles writing the string length
-	 * and the terminating null character automatically. You must invoke start()
-	 * before calling this method.
+	 * automatically. You must invoke start() before calling this method.
 	 */
 	public PacketWriter writeUsAsciiString(String str) {
 		writeUsAsciiString(str, baos);
@@ -261,15 +306,23 @@ public class PacketWriter {
 	}
 
 	/**
-	 * If the given String is not null, it is written to the packet, and the
-	 * corresponding bit in the object's bit field is set; otherwise, nothing
-	 * happens. You must invoke startObject() before calling this method.
+	 * Convenience method for writeString(bit.ordinal(), str).
 	 */
-	public PacketWriter writeString(Enum<?> bit, String str) {
+	public PacketWriter writeString(Enum<?> bit, CharSequence str) {
+		return writeString(bit.ordinal(), str);
+	}
+
+	/**
+	 * If the given CharSequence is not null, it is written to the packet, and
+	 * the corresponding bit in the object's bit field is set; otherwise,
+	 * nothing happens. You must invoke startObject() before calling this
+	 * method.
+	 */
+	public PacketWriter writeString(int bitIndex, CharSequence str) {
 		assertObjectStarted();
 
 		if (str != null) {
-			bitField.set(bit, true);
+			bitField.set(bitIndex, true);
 			writeString(str, baosObj);
 		}
 
@@ -286,15 +339,22 @@ public class PacketWriter {
 	}
 
 	/**
+	 * Convenience method for writeBytes(bit.ordinal(), bytes).
+	 */
+	public PacketWriter writeBytes(Enum<?> bit, byte[] bytes) {
+		return writeBytes(bit.ordinal(), bytes);
+	}
+
+	/**
 	 * If the given byte array is not null, it is written to the packet, and the
 	 * corresponding bit in the object's bit field is set; otherwise, nothing
 	 * happens. You must invoke startObject() before calling this method.
 	 */
-	public PacketWriter writeBytes(Enum<?> bit, byte[] bytes) {
+	public PacketWriter writeBytes(int bitIndex, byte[] bytes) {
 		assertObjectStarted();
 
 		if (bytes != null) {
-			bitField.set(bit, true);
+			bitField.set(bitIndex, true);
 			baosObj.write(bytes, 0, bytes.length);
 		}
 
@@ -324,14 +384,36 @@ public class PacketWriter {
 	 * startObject() before calling this method.
 	 */
 	public PacketWriter writeUnknown(Enum<?> bit) {
+		return writeUnknown(bit.ordinal(), bit.name());
+	}
+
+	/**
+	 * Retrieves the unknown value identified by the indicated bit as a byte
+	 * array from the unknown properties map. If the retrieved value is not
+	 * null, it is written to the packet and the corresponding bit in the
+	 * object's bit field is set; otherwise, nothing happens. You must invoke
+	 * startObject() before calling this method.
+	 */
+	public PacketWriter writeUnknown(int bitIndex) {
+		return writeUnknown(bitIndex, BitField.generateBitName(bitIndex));
+	}
+
+	/**
+	 * Retrieves the unknown value identified by the indicated bit as a byte
+	 * array from the unknown properties map. If the retrieved value is not
+	 * null, it is written to the packet and the corresponding bit in the
+	 * object's bit field is set; otherwise, nothing happens. You must invoke
+	 * startObject() before calling this method.
+	 */
+	private PacketWriter writeUnknown(int bitIndex, String bitName) {
 		assertObjectStarted();
 		SortedMap<String, byte[]> unknownProps = obj.getUnknownProps();
 
 		if (unknownProps != null) {
-			byte[] bytes = unknownProps.get(bit.name());
+			byte[] bytes = unknownProps.get(bitName);
 	
 			if (bytes != null) {
-				bitField.set(bit, true);
+				bitField.set(bitIndex, true);
 				baosObj.write(bytes, 0, bytes.length);
 			}
 		}
@@ -378,13 +460,13 @@ public class PacketWriter {
 		baos = null;
 		writeInt(ArtemisPacket.HEADER, out); // header
 		writeInt(payload.length + 24, out);  // packet length
-		writeInt(mConnType.toInt(), out);    // connection type
+		writeInt(mOrigin.toInt(), out);      // connection type
 		writeInt(0, out);                    // padding
 		writeInt(payload.length + 4, out);   // remaining bytes
 		writeInt(mPacketType, out);          // packet type
-		out.write(payload); // payload
+		out.write(payload);                  // payload
 		out.flush();
-		debugger.onSendPacketBytes(mConnType, mPacketType, payload);
+		debugger.onSendPacketBytes(mOrigin, mPacketType, payload);
 	}
 
 	/**
@@ -441,14 +523,30 @@ public class PacketWriter {
 	}
 
 	/**
-	 * Writes a UTF-16LE encoded String into the given ByteArrayOutputStream.
+	 * Writes a UTF-16LE encoded CharSequence into the given
+	 * ByteArrayOutputStream.
 	 */
-	private void writeString(String v, ByteArrayOutputStream outStream) {
-		int charCount = v.length() + 1;
+	private void writeString(CharSequence v, ByteArrayOutputStream outStream) {
+		int charCount;
+
+		if (v instanceof NullTerminatedString) {
+			charCount = ((NullTerminatedString) v).fullLength();
+		} else {
+			charCount = v.length() + 1;
+		}
+
 		writeInt(charCount, outStream);
-		byte[] charBytes = v.getBytes(Util.UTF16LE);
+		byte[] charBytes = v.toString().getBytes(Util.UTF16LE);
 		outStream.write(charBytes, 0, charBytes.length);
 		writeShort(0, outStream); // terminating null
+
+		if (v instanceof NullTerminatedString) {
+			byte[] garbage = ((NullTerminatedString) v).getGarbage();
+
+			if (garbage.length != 0) {
+				outStream.write(garbage, 0, garbage.length);
+			}
+		}
 	}
 
 	/**

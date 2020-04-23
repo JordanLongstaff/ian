@@ -1,43 +1,37 @@
 package com.walkertribe.ian.protocol.core.world;
 
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.IntelType;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
 import com.walkertribe.ian.protocol.BaseArtemisPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
+import com.walkertribe.ian.world.ArtemisObject;
 
 /**
  * Provides intel on another vessel, typically as the result of a level 2 scan.
  * @author rjwut
  */
+@Packet(origin = Origin.SERVER, type = CorePacketType.OBJECT_TEXT)
 public class IntelPacket extends BaseArtemisPacket {
-	private static final int TYPE = 0xee665279;
+	private final int mId;
+	private IntelType mIntelType;
+	private final CharSequence mIntel;
 
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.SERVER, TYPE, new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return IntelPacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new IntelPacket(reader);
-			}
-		});
+	public IntelPacket(ArtemisObject obj, IntelType type, CharSequence intel) {
+		this(obj.getId(), type, intel);
 	}
 
-	private final int mId;
-	private final String mIntel;
+	public IntelPacket(int hullId, IntelType type, CharSequence intel) {
+		mId = hullId;
+		mIntelType = type;
+		mIntel = intel;
+	}
 
-	private IntelPacket(PacketReader reader) {
-    	super(ConnectionType.SERVER, TYPE);
+	public IntelPacket(PacketReader reader) {
     	mId = reader.readInt();
-    	reader.readUnknown("Unknown", 1);
+    	mIntelType = IntelType.values()[reader.readByte()];
         mIntel = reader.readString();
     }
 
@@ -49,19 +43,33 @@ public class IntelPacket extends BaseArtemisPacket {
 	}
 
 	/**
+	 * The type of intel received
+	 */
+	public IntelType getIntelType() {
+		return mIntelType;
+	}
+
+	/**
 	 * The intel on that ship, as human-readable text
 	 */
-	public String getIntel() {
+	public CharSequence getIntel() {
 		return mIntel;
+	}
+
+	/**
+	 * Applies the intel in this packet to the given ArtemisObject.
+	 */
+	public void applyTo(ArtemisObject obj) {
+		mIntelType.set(obj, mIntel);;
 	}
 
 	@Override
 	protected void writePayload(PacketWriter writer) {
-		writer.writeInt(mId).writeByte((byte) 3).writeString(mIntel);
+		writer.writeInt(mId).writeByte((byte) mIntelType.ordinal()).writeString(mIntel);
 	}
 
 	@Override
 	protected void appendPacketDetail(StringBuilder b) {
-		b.append("Obj #").append(mId).append(": ").append(mIntel);
+		b.append("Obj #").append(mId).append(": ").append(mIntelType).append('=').append(mIntel);
 	}
 }

@@ -12,6 +12,8 @@ import com.walkertribe.ian.model.Model;
  */
 public class ArtemisCreature extends BaseArtemisOrientable {
 	private CreatureType mCreatureType;
+	private float mHealth = Float.NaN;
+	private float mMaxHealth = Float.NaN;
 
     public ArtemisCreature(int objId) {
         super(objId);
@@ -26,10 +28,10 @@ public class ArtemisCreature extends BaseArtemisOrientable {
 	public Model getModel(Context ctx) {
 		return mCreatureType != null ? mCreatureType.getModel(ctx) : null;
 	}
-
-    @Override
-    public void updateFrom(ArtemisObject obj, Context ctx) {
-        super.updateFrom(obj, ctx);
+	
+	@Override
+    public void updateFrom(ArtemisObject obj) {
+        super.updateFrom(obj);
         
         if (obj instanceof ArtemisCreature) {
             ArtemisCreature cast = (ArtemisCreature) obj;
@@ -39,9 +41,20 @@ public class ArtemisCreature extends BaseArtemisOrientable {
             if (creatureType != null) {
                 setCreatureType(creatureType);
             }
+
+            if (!Float.isNaN(cast.mHealth)) {
+            	mHealth = cast.mHealth;
+            }
+
+            if (!Float.isNaN(cast.mMaxHealth)) {
+            	mMaxHealth = cast.mMaxHealth;
+            }
         }
     }
 
+    /**
+     * Returns the type of creature this is.
+     */
     public CreatureType getCreatureType() {
     	return mCreatureType;
     }
@@ -50,9 +63,35 @@ public class ArtemisCreature extends BaseArtemisOrientable {
     	mCreatureType = creatureType;
     }
 
+    /**
+     * The health level of this creature.
+     * Unspecified: Float.NaN
+     */
+	public float getHealth() {
+		return mHealth;
+	}
+
+	public void setHealth(float health) {
+		mHealth = health;
+	}
+
+    /**
+     * The maximum health level of this creature.
+     * Unspecified: Float.NaN
+     */
+	public float getMaxHealth() {
+		return mMaxHealth;
+	}
+
+	public void setMaxHealth(float maxHealth) {
+		mMaxHealth = maxHealth;
+	}
+
     @Override
-	public void appendObjectProps(SortedMap<String, Object> props, boolean includeUnspecified) {
-    	super.appendObjectProps(props, includeUnspecified);
-    	putProp(props, "Creature type", mCreatureType, includeUnspecified);
+	public void appendObjectProps(SortedMap<String, Object> props) {
+    	super.appendObjectProps(props);
+    	putProp(props, "Creature type", mCreatureType);
+    	putProp(props, "Health", mHealth);
+    	putProp(props, "Max health", mMaxHealth);
     }
 }

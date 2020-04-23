@@ -1,39 +1,19 @@
 package com.walkertribe.ian.protocol.core.eng;
 
-import com.walkertribe.ian.enums.ConnectionType;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.enums.ShipSystem;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
 import com.walkertribe.ian.protocol.BaseArtemisPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
 import com.walkertribe.ian.world.Artemis;
 
 /**
  * Sets the amount of energy allocated to a system.
  */
+@Packet(origin = Origin.CLIENT, type = CorePacketType.VALUE_FLOAT, subtype = 0x04)
 public class EngSetEnergyPacket extends BaseArtemisPacket {
-    private static final int TYPE = 0x0351a5ac;
-    private static final byte SUBTYPE = 0x04;
-
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.CLIENT, TYPE, SUBTYPE,
-				new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return EngSetEnergyPacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new EngSetEnergyPacket(reader);
-			}
-		});
-	}
-
     private ShipSystem mSystem;
     private float mValue;
 
@@ -44,8 +24,6 @@ public class EngSetEnergyPacket extends BaseArtemisPacket {
      * 		inclusive. A value of 0.333333... is the default allocation level.
      */
     public EngSetEnergyPacket(ShipSystem system, float value) {
-        super(ConnectionType.CLIENT, TYPE);
-
         if (system == null) {
         	throw new IllegalArgumentException("You must provide a system");
         }
@@ -79,24 +57,30 @@ public class EngSetEnergyPacket extends BaseArtemisPacket {
         this(system, percentage / (float) Artemis.MAX_ENERGY_ALLOCATION_PERCENT);
     }
 
-    private EngSetEnergyPacket(PacketReader reader) {
-        super(ConnectionType.CLIENT, TYPE);
+    public EngSetEnergyPacket(PacketReader reader) {
         reader.skip(4); // subtype
     	mValue = reader.readFloat();
     	mSystem = ShipSystem.values()[reader.readInt()];
     }
 
+    /**
+     * The ship system whose energy level is being set.
+     */
     public ShipSystem getSystem() {
     	return mSystem;
     }
 
+    /**
+     * The energy level to set, as a value between 0 and 1 (inclusive), with 0
+     * meaning 0% allocation, and 1 meaning 300% allocation.
+     */
     public float getAllocation() {
     	return mValue;
     }
 
     @Override
 	protected void writePayload(PacketWriter writer) {
-    	writer	.writeInt(SUBTYPE)
+    	writer	.writeInt(0x04) // subtype
 				.writeFloat(mValue)
 				.writeInt(mSystem.ordinal());
 	}

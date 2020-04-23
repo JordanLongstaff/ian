@@ -1,65 +1,54 @@
 package com.walkertribe.ian.protocol.core;
 
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
-import com.walkertribe.ian.protocol.BaseArtemisPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.SimpleEventPacket.SubType;
 
-public class PlayerShipDamagePacket extends BaseArtemisPacket {
-    private static final int TYPE = 0xf754c8fe;
+/**
+ * Notifies the client that the indicated ship has received an impact. This
+ * manifests as an interface screw on the client.
+ * @author rjwut
+ */
+@Packet(origin = Origin.SERVER, type = CorePacketType.SIMPLE_EVENT, subtype = SubType.PLAYER_SHIP_DAMAGE)
+public class PlayerShipDamagePacket extends SimpleEventPacket {
+	private int mShipIndex;
+	private float mDuration;
 
-	public static void register(PacketFactoryRegistry registry) {
-		PacketFactory factory = new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return PlayerShipDamagePacket.class;
-			}
+    public PlayerShipDamagePacket(int shipIndex, float duration) {
+        mShipIndex = shipIndex;
+        mDuration = duration;
+    }
 
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new PlayerShipDamagePacket(reader);
-			}
-		};
-		registry.register(ConnectionType.SERVER, TYPE, MSG_TYPE, factory);
+	public PlayerShipDamagePacket(PacketReader reader) {
+		super(reader);
+        mShipIndex = reader.readInt();
+        mDuration = reader.readFloat();
+    }
+
+	/**
+	 * The index of the ship being impacted (0-based).
+	 */
+	public int getShipIndex() {
+		return mShipIndex;
 	}
 
-    public static final byte MSG_TYPE = 0x05;
-
-    private byte[] unknown0;
-    private byte[] unknown1;
-
-    private PlayerShipDamagePacket(PacketReader reader) throws ArtemisPacketException {
-        super(ConnectionType.SERVER, TYPE);
-        int subtype = reader.readInt();
-
-        if (subtype != MSG_TYPE) {
-        	throw new ArtemisPacketException(
-        			"Expected subtype " + MSG_TYPE + ", got " + subtype
-        	);
-        }
-
-        unknown0 = reader.readBytes(4);
-        unknown1 = reader.readBytes(4);
-    }
-
-    public PlayerShipDamagePacket() {
-        super(ConnectionType.SERVER, TYPE);
-        unknown0 = new byte[] { 0, 0, 0, 0 };
-        unknown1 = unknown0;
-    }
+	/**
+	 * How long the interface screw should last, in seconds.
+	 */
+	public float getDuration() {
+		return mDuration;
+	}
 
 	@Override
 	protected void writePayload(PacketWriter writer) {
-		writer.writeInt(MSG_TYPE).writeBytes(unknown0).writeBytes(unknown1);
+		super.writePayload(writer);
+		writer.writeInt(mShipIndex).writeFloat(mDuration);
 	}
 
 	@Override
 	protected void appendPacketDetail(StringBuilder b) {
-		// do nothing
+		b.append("Ship #" + mShipIndex + " (" + mDuration + " s)");
 	}
 }

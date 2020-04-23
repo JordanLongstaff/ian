@@ -2,6 +2,7 @@ package com.walkertribe.ian.util;
 
 import java.util.ArrayDeque;
 import java.util.Iterator;
+import java.util.Objects;
 import java.util.Queue;
 
 /**
@@ -20,14 +21,23 @@ public final class GridCoord implements Comparable<GridCoord> {
         this.z = z;
     }
 
+    /**
+     * The X-coordinate value
+     */
     public int getX() {
     	return x;
     }
 
+    /**
+     * The Y-coordinate value
+     */
     public int getY() {
     	return y;
     }
 
+    /**
+     * The Z-coordinate value
+     */
     public int getZ() {
     	return z;
     }
@@ -46,16 +56,16 @@ public final class GridCoord implements Comparable<GridCoord> {
         return equals(cast.x, cast.y, cast.z);
     }
 
+    /**
+     * Returns true if the given coordinates match those of this object.
+     */
     public final boolean equals(int ox, int oy, int oz) {
         return (x == ox && y == oy && z == oz);
     }
 
     @Override
     public int hashCode() {
-        int result = (x ^ (x >>> 32));
-        result = 31 * result + (y ^ (y >>> 32));
-        result = 31 * result + (z ^ (z >>> 32));
-        return result;
+    	return Objects.hash(x, y, z);
     }
 
     @Override
@@ -107,15 +117,6 @@ public final class GridCoord implements Comparable<GridCoord> {
         }
 
         return c;
-    }
-
-    /**
-     * Return a unique long representing this coord.
-     *  It's super simple, but should work since our
-     *  coords tend to be 10 or less in any dimension
-     */
-    public long getUniqueId() {
-        return (x * 10000L) + (y * 100) + z;
     }
 
     /**

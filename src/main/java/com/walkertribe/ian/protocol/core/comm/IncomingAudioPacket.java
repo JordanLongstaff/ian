@@ -1,62 +1,29 @@
 package com.walkertribe.ian.protocol.core.comm;
 
 import com.walkertribe.ian.enums.AudioMode;
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
 import com.walkertribe.ian.protocol.BaseArtemisPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
 
 /**
  * Received when an incoming COMMs audio message arrives.
  * @author dhleong
  */
+@Packet(origin = Origin.SERVER, type = CorePacketType.INCOMING_MESSAGE)
 public class IncomingAudioPacket extends BaseArtemisPacket {
-    private static final int TYPE = 0xae88e058;
-
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.SERVER, TYPE, new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return IncomingAudioPacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new IncomingAudioPacket(reader);
-			}
-		});
-	}
-
     private final int mId;
     private final AudioMode mMode;
-    private final String mTitle;
-    private final String mFile;
-
-    private IncomingAudioPacket(PacketReader reader) {
-    	super(ConnectionType.SERVER, TYPE);
-        mId = reader.readInt();
-        mMode = AudioMode.values()[reader.readInt() - 1];
-
-        if (mMode == AudioMode.INCOMING) {
-            mTitle = reader.readString();
-            mFile = reader.readString();
-        } else {
-        	mTitle = null;
-        	mFile = null;
-        }
-    }
+    private final CharSequence mTitle;
+    private final CharSequence mFile;
 
     /**
      * Indicates that the audio message with the given ID has started playing
      * (Mode.PLAYING).
      */
     public IncomingAudioPacket(int id) {
-    	super(ConnectionType.SERVER, TYPE);
     	mId = id;
     	mMode = AudioMode.PLAYING;
         mTitle = null;
@@ -67,11 +34,23 @@ public class IncomingAudioPacket extends BaseArtemisPacket {
      * Indicates that there is an incoming audio message (Mode.INCOMING).
      */
     public IncomingAudioPacket(int id, String title, String file) {
-    	super(ConnectionType.SERVER, TYPE);
     	mId = id;
     	mMode = AudioMode.INCOMING;
         mTitle = title;
         mFile = file;
+    }
+
+    public IncomingAudioPacket(PacketReader reader) {
+        mId = reader.readInt();
+        mMode = AudioMode.values()[reader.readInt() - 1];
+
+        if (mMode == AudioMode.INCOMING) {
+            mTitle = reader.readString();
+            mFile = reader.readString();
+        } else {
+        	mTitle = null;
+        	mFile = null;
+        }
     }
 
     /**
@@ -86,7 +65,7 @@ public class IncomingAudioPacket extends BaseArtemisPacket {
      * getAudioMode() returns IncomingAudioPacket.Mode.INCOMING; otherwise, it
      * returns null.
      */
-    public String getFileName() {
+    public CharSequence getFileName() {
         return mFile;
     }
     
@@ -95,13 +74,13 @@ public class IncomingAudioPacket extends BaseArtemisPacket {
      * getAudioMode() returns IncomingAudioPacket.Mode.INCOMING; otherwise, it
      * returns null.
      */
-    public String getTitle() {
+    public CharSequence getTitle() {
         return mTitle;
     }
 
     @Override
-    public ConnectionType getConnectionType() {
-        return ConnectionType.SERVER;
+    public Origin getOrigin() {
+        return Origin.SERVER;
     }
     
     /**

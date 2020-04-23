@@ -1,11 +1,15 @@
 package com.walkertribe.ian.world;
 
 import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.SortedMap;
 
 import com.walkertribe.ian.Context;
 import com.walkertribe.ian.enums.AlertStatus;
+import com.walkertribe.ian.enums.BeaconMode;
 import com.walkertribe.ian.enums.BeamFrequency;
+import com.walkertribe.ian.enums.CreatureType;
 import com.walkertribe.ian.enums.DriveType;
 import com.walkertribe.ian.enums.MainScreenView;
 import com.walkertribe.ian.enums.ObjectType;
@@ -15,51 +19,165 @@ import com.walkertribe.ian.enums.TargetingMode;
 import com.walkertribe.ian.enums.TubeState;
 import com.walkertribe.ian.enums.Upgrade;
 import com.walkertribe.ian.util.BoolState;
+import com.walkertribe.ian.vesseldata.Vessel;
+import com.walkertribe.ian.vesseldata.VesselAttribute;
 
 /**
  * A player ship.
  * @author dhleong
  */
 public class ArtemisPlayer extends BaseArtemisShip {
-	private TargetingMode mTargetingMode;
+    /**
+	 * The status of a single ordnance tube.
+	 */
+	private class Tube {
+		private boolean hasSecondsLeft = false;
+		private float secondsLeft = Float.NaN; // sometimes NaN comes from the server (!)
+		private TubeState state;
+		private byte contents = -1;
+
+		private boolean hasData() {
+			return hasSecondsLeft || state != null || contents != -1;
+		}
+
+		private void updateFrom(Tube other) {
+			if (other.hasSecondsLeft) {
+				secondsLeft = other.secondsLeft;
+				hasSecondsLeft = true;
+			}
+
+			if (other.state != null) {
+				state = other.state;
+			}
+
+            if (other.contents >= 0) {
+            	contents = other.contents;
+            } else if (other.state == TubeState.UNLOADED) {
+            	contents = 0;
+            }
+		}
+	}
+
+	/**
+	 * The status of a storable upgrade.
+	 */
+	private class UpgradeStatus {
+		private BoolState active = BoolState.UNKNOWN;
+		private byte count = -1;
+		private int secondsLeft = -1;
+
+		private boolean hasData() {
+			return BoolState.isKnown(active) || count != -1 || secondsLeft != -1;
+		}
+
+		private void updateFrom(UpgradeStatus other) {
+			if (BoolState.isKnown(other.active)) {
+				active = other.active;
+			}
+
+			if (other.count != -1) {
+				count = other.count;
+			}
+
+			if (other.secondsLeft != -1) {
+				secondsLeft = other.secondsLeft;
+			}
+		}
+	}
+
+	/**
+	 * The status of a ship system.
+	 */
+	private class SystemStatus {
+		private float energy = Float.NaN;
+		private float heat = Float.NaN;
+		private int coolant = -1;
+
+		private boolean hasData() {
+			return !Float.isNaN(energy) || !Float.isNaN(heat) || coolant != -1;
+		}
+
+		private void updateFrom(SystemStatus other) {
+			if (!Float.isNaN(other.energy)) {
+				energy = other.energy;
+			}
+
+			if (!Float.isNaN(other.heat)) {
+				heat = other.heat;
+			}
+
+			if (other.coolant != -1) {
+				coolant = other.coolant;
+			}
+		}
+	}
+
+	private ObjectType mDeclaredType;
+    private TargetingMode mTargetingMode;
 	private AlertStatus mAlertStatus;
-    private BoolState mShields;
-    private int mShipNumber = -1;
-    private final float[] mHeat = new float[Artemis.SYSTEM_COUNT];
-    private final float[] mSystems = new float[Artemis.SYSTEM_COUNT];
-    private final int[] mCoolant = new int[Artemis.SYSTEM_COUNT];
+    private BoolState mShields = BoolState.UNKNOWN;
+    private byte mShipIndex = Byte.MIN_VALUE;
+	private final SystemStatus[] mSystems = new SystemStatus[Artemis.SYSTEM_COUNT];
     private final int[] mTorpedos = new int[OrdnanceType.COUNT];
-    private final float[] mTubeTimes = new float[Artemis.MAX_TUBES];
-    private final TubeState[] mTubeState = new TubeState[Artemis.MAX_TUBES];
-    private final byte[] mTubeContents = new byte[Artemis.MAX_TUBES];
-    private float mEnergy = -1;
+    private final Tube[] mTubes = new Tube[Artemis.MAX_TUBES];
+    private float mEnergy = Float.NaN;
+    private byte mNebulaType = -1;
     private int mDockingBase = -1;
     private MainScreenView mMainScreen;
-    private int mAvailableCoolant = -1;
+    private byte mAvailableCoolantOrMissiles = -1;
     private int mWeaponsTarget = -1;
     private byte mWarp = -1;
     private BeamFrequency mBeamFreq;
     private DriveType mDriveType;
-    private BoolState mReverse;
+    private BoolState mReverse = BoolState.UNKNOWN;
+    private float mClimbDive = Float.NaN;
     private int mScienceTarget = -1;
-    private float mScanProgress = -1;
+    private boolean mHasScanProgress = false;
+    private float mScanProgress = Float.NaN;
     private int mCaptainTarget = -1;
     private int mScanningId = -1;
-    private final byte[] mUpgrades = new byte[Upgrade.STORABLE_UPGRADE_COUNT];
+    private Map<Upgrade, UpgradeStatus> mUpgrades = new LinkedHashMap<Upgrade, UpgradeStatus>(Upgrade.ACTIVATION_UPGRADE_COUNT);
     private int mCapitalShipId = -1;
-    private int mAccentColor = -1;
+    private float mAccentColor = Float.NaN;
+    private float mEmergencyJumpCooldown = Float.NaN;
+    private CreatureType mBeaconType;
+    private BeaconMode mBeaconMode;
 
     public ArtemisPlayer(int objId) {
         super(objId);
 
         // pre-fill
-        Arrays.fill(mHeat, -1);
-        Arrays.fill(mSystems, -1);
-        Arrays.fill(mCoolant, -1);
         Arrays.fill(mTorpedos, -1);
-        Arrays.fill(mTubeTimes, -1);
-        Arrays.fill(mTubeContents, (byte) -1);
-        Arrays.fill(mUpgrades, (byte) -1);
+
+        for (int i = 0; i < Artemis.SYSTEM_COUNT; i++) {
+        	mSystems[i] = new SystemStatus();
+        }
+
+        for (int i = 0; i < Artemis.MAX_TUBES; i++) {
+        	mTubes[i] = new Tube();
+        }
+
+        for (Upgrade upgrade : Upgrade.activation()) {
+        	mUpgrades.put(upgrade, new UpgradeStatus());
+        }
+    }
+
+    /**
+     * Constructor for ObjectParsers to invoke to provide the ObjectType for later writing (in case
+     * the packet is empty). This ensures symmetrical packet read/write.
+     */
+    public ArtemisPlayer(int objId, ObjectType type) {
+        this(objId);
+
+        if (type == null) {
+        	throw new IllegalArgumentException("You must specify a type");
+        }
+
+        if (!ArtemisPlayer.class.equals(type.getObjectClass())) {
+        	throw new IllegalArgumentException("Invalid type: " + type);
+        }
+
+        mDeclaredType = type;
     }
 
     @Override
@@ -68,8 +186,16 @@ public class ArtemisPlayer extends BaseArtemisShip {
     }
 
     /**
+     * If we parsed this object from an ObjectUpdatePacket, this will return the ObjectType that
+     * was declared by the packet. Otherwise, this will be null.
+     */
+    public ObjectType getDeclaredType() {
+    	return mDeclaredType;
+    }
+
+    /**
      * The ship's energy reserves.
-     * Unspecified: -1
+     * Unspecified: Float.NaN
      */
     public float getEnergy() {
         return mEnergy;
@@ -80,17 +206,17 @@ public class ArtemisPlayer extends BaseArtemisShip {
     }
 
     /**
-     * Get this ship's player ship number. Note that this value is one-based, so
-     * the vessel that is named Artemis will have a ship number of 1.
-     * Unspecified: -1
-     * @return int in [1,Artemis.SHIP_COUNT], or -1 if undefined
+     * Get this ship's player ship index. Note that this value is zero-based, so
+     * the vessel that is named Artemis will have a ship index of 0. If the ship
+     * is a single-seat craft, this value will be -1.
+     * Unspecified: Byte.MIN_VALUE
      */
-    public int getShipNumber() {
-        return mShipNumber == -1 ? -1 : mShipNumber;
+    public byte getShipIndex() {
+        return mShipIndex;
     }
 
-    public void setShipNumber(int shipNumber) {
-    	mShipNumber = shipNumber;
+    public void setShipIndex(byte shipIndex) {
+    	mShipIndex = shipIndex;
     }
 
     /**
@@ -98,46 +224,55 @@ public class ArtemisPlayer extends BaseArtemisShip {
      * Unspecified: -1
      */
     public int getSystemCoolant(ShipSystem sys) {
-        return mCoolant[sys.ordinal()];
+        return mSystems[sys.ordinal()].coolant;
     }
 
     public void setSystemCoolant(ShipSystem sys, int coolant) {
-        mCoolant[sys.ordinal()] = coolant;
+    	if (coolant < 0 || coolant > Artemis.MAX_COOLANT_PER_SYSTEM) {
+    		throw new IllegalArgumentException("Invalid coolant value (" + coolant + ") for " + sys);
+    	}
+
+    	mSystems[sys.ordinal()].coolant = coolant;
     }
-    
+
     /**
      * The energy allocation level for a system, as a value between 0 (no energy
      * allocated) and 1 (maximum energy allocated).
-     * Unspecified: -1
+     * Unspecified: Float.NaN
      */
     public float getSystemEnergy(ShipSystem sys) {
-        return mSystems[sys.ordinal()];
+        return mSystems[sys.ordinal()].energy;
     }
 
     public void setSystemEnergy(ShipSystem sys, float energy) {
-        if (energy > 1f) {
-            throw new IllegalArgumentException("Illegal energy value: " + energy);
+        if (energy < 0f || energy > 1f) {
+            throw new IllegalArgumentException("Illegal energy value (" + energy + ") for " + sys);
         }
-        mSystems[sys.ordinal()] = energy;
+
+        mSystems[sys.ordinal()].energy = energy;
     }
 
     /**
-     * Convenience, set energy as an int percentage [0, 300]
+     * Convenience, set energy as a percentage [0, 300]
      */
-    public void setSystemEnergy(ShipSystem sys, int energyPercentage) {
-        setSystemEnergy(sys, energyPercentage / (float) Artemis.MAX_ENERGY_ALLOCATION_PERCENT);
+    public void setSystemEnergyAsPercent(ShipSystem sys, float energyPercentage) {
+        setSystemEnergy(sys, energyPercentage / Artemis.MAX_ENERGY_ALLOCATION_PERCENT);
     }
 
     /**
      * The heat level for a system.
-     * Unspecified: -1
+     * Unspecified: Float.NaN
      */
     public float getSystemHeat(ShipSystem sys) {
-    	return mHeat[sys.ordinal()];
+    	return mSystems[sys.ordinal()].heat;
     }
 
     public void setSystemHeat(ShipSystem sys, float heat) {
-        mHeat[sys.ordinal()] = heat;
+    	if (heat < 0f || heat > 1f) {
+            throw new IllegalArgumentException("Illegal heat value (" + heat + ") for " + sys);
+    	}
+
+    	mSystems[sys.ordinal()].heat = heat;
     }
 
     /**
@@ -147,8 +282,8 @@ public class ArtemisPlayer extends BaseArtemisShip {
         return mShields;
     }
 
-    public void setShields(boolean newState) {
-        mShields = BoolState.from(newState);
+    public void setShields(BoolState newState) {
+        mShields = newState;
     }
 
     /**
@@ -160,6 +295,20 @@ public class ArtemisPlayer extends BaseArtemisShip {
 
     public void setAlertStatus(AlertStatus alertStatus) {
         mAlertStatus = alertStatus;
+    }
+
+    /**
+     * The type of the nebula the ship is in, or 0 if not in a nebula. The
+     * known nebula types art 1, 2, and 3; but other values have been observed,
+     * such as 38 and -127. It is unknown what these other values mean.
+     * Unspecified: -1
+     */
+    public byte getNebulaType() {
+    	return mNebulaType;
+    }
+
+    public void setNebulaType(byte nebulaType) {
+    	mNebulaType = nebulaType;
     }
 
     /**
@@ -187,8 +336,8 @@ public class ArtemisPlayer extends BaseArtemisShip {
         return mTorpedos[type.ordinal()];
     }
 
-    public void setTorpedoCount(int torpType, int count) {
-        mTorpedos[torpType] = count;
+    public void setTorpedoCount(OrdnanceType type, int count) {
+        mTorpedos[type.ordinal()] = count;
     }
 
     /**
@@ -203,15 +352,27 @@ public class ArtemisPlayer extends BaseArtemisShip {
     }
 
     /**
+     * Whether ship ship is climbing (-1), diving (1), or leveling out (0).
+     * Unspecified: Float.NaN
+     */
+    public float getClimbDive() {
+    	return mClimbDive;
+    }
+
+    public void setClimbDive(float climbDive) {
+    	mClimbDive = climbDive;
+    }
+
+    /**
      * The loading state of the given tube.
      * Unspecified: null
      */
-    public TubeState getTubeState(int tube) {
-    	return mTubeState[tube];
+    public TubeState getTubeState(int tubeIndex) {
+    	return mTubes[tubeIndex].state;
     }
 
-    public void setTubeState(int tube, TubeState state) {
-    	mTubeState[tube] = state;
+    public void setTubeState(int tubeIndex, TubeState state) {
+    	mTubes[tubeIndex].state = state;
     }
 
     /**
@@ -221,12 +382,12 @@ public class ArtemisPlayer extends BaseArtemisShip {
      * tube.
      * Unspecified: any negative number
      */
-    public byte getTubeContentsValue(int tube) {
-    	return mTubeContents[tube];
+    public byte getTubeContentsValue(int tubeIndex) {
+    	return mTubes[tubeIndex].contents;
     }
 
-    public void setTubeContentsValue(int tube, byte value) {
-    	mTubeContents[tube] = value;
+    public void setTubeContentsValue(int tubeIndex, byte value) {
+    	mTubes[tubeIndex].contents = value;
     }
 
     /**
@@ -234,70 +395,158 @@ public class ArtemisPlayer extends BaseArtemisShip {
      * method will return null if the tube contents are unspecified, or if the
      * tube is empty.
      */
-    public OrdnanceType getTubeContents(int tube) {
-    	TubeState state = mTubeState[tube];
-    	int contents = mTubeContents[tube];
+    public OrdnanceType getTubeContents(int tubeIndex) {
+    	Tube tube = mTubes[tubeIndex];
 
-    	if (state == null || contents < 0) {
+    	if (tube.state == null || tube.contents < 0) {
     		return null;
     	}
 
-    	return state == TubeState.UNLOADED ? null : OrdnanceType.values()[contents];
+    	return tube.state == TubeState.UNLOADED ? null : OrdnanceType.values()[tube.contents];
     }
 
     /**
      * Sets the contents of the given tube. The tube state must be set to a
      * value other than TubeState.UNLOADED before invoking this method.
      */
-    public void setTubeContents(int tube, OrdnanceType type) {
-    	TubeState state = mTubeState[tube];
+    public void setTubeContents(int tubeIndex, OrdnanceType type) {
+    	Tube tube = mTubes[tubeIndex];
 
-    	if (state == null) {
+    	if (tube.state == null) {
     		throw new IllegalStateException("Tube state not set"); 
     	}
 
-    	if (state == TubeState.UNLOADED) {
+    	if (tube.state == TubeState.UNLOADED) {
     		if (type != null) {
     			throw new IllegalArgumentException(
     					"Unloaded tubes cannot contain ordnance"
     			);
     		}
 
-    		mTubeContents[tube] = 0;
+    		tube.contents = 0;
     	} else {
     		if (type == null) {
     			throw new IllegalArgumentException(
-    					"No OrdnanceType specified for " + state + " tube state"
+    					"No OrdnanceType specified for " + tube.state + " tube state"
     			);
     		}
 
-    		mTubeContents[tube] = (byte) type.ordinal();
+    		tube.contents = (byte) type.ordinal();
     	}
+    }
+
+    /**
+     * Returns true if the indicated tube has a specified countdown value. This
+     * is needed because sometimes the server sends NaN for this value.
+     */
+    public boolean isTubeHasCountdown(int tubeIndex) {
+    	return mTubes[tubeIndex].hasSecondsLeft;
     }
 
     /**
      * Returns the number of seconds until the current (un)load operation is
      * complete.
-     * Unspecified: -1
+     * Unspecified: isTubeHasCountdown(tubeIndex) == false (because sometimes the
+     * server sends NaN)
      */
-    public float getTubeCountdown(int tube) {
-        return mTubeTimes[tube];
+    public float getTubeCountdown(int tubeIndex) {
+        return mTubes[tubeIndex].secondsLeft;
     }
 
-    public void setTubeCountdown(int tube, float seconds) {
-    	mTubeTimes[tube] = seconds;
+    public void setTubeCountdown(int tubeIndex, float seconds) {
+    	mTubes[tubeIndex].secondsLeft = seconds;
+    	mTubes[tubeIndex].hasSecondsLeft = true;
     }
 
     /**
-     * Amount of coolant in the ship's reserves.
+     * If this is a regular player ship, this value is the amount of coolant in
+     * the ship's reserves. If it's a fighter, it's the number of missiles it
+     * has. This property exists in order to support the protocol, which uses
+     * the same bit to represent both properties, since a packet may not contain
+     * the information required to know whether this is a regular player ship or
+     * a fighter. For ships that have been tracked by the SystemManager, you can
+     * use the separate getAvailableCoolant() and getMissiles() methods.
      * Unspecified: -1
      */
-    public int getAvailableCoolant() {
-        return mAvailableCoolant;
+    public byte getAvailableCoolantOrMissiles() {
+        return mAvailableCoolantOrMissiles;
     }
     
-    public void setAvailableCoolant(int availableCoolant) {
-        mAvailableCoolant = availableCoolant;
+    public void setAvailableCoolantOrMissiles(byte availableCoolantOrMissiles) {
+        mAvailableCoolantOrMissiles = availableCoolantOrMissiles;
+    }
+
+    /**
+     * Returns the amount of coolant in the ship's reserves, if this is a
+     * regular player ship, or 0 if this is a fighter. If the type of ship is
+     * unknown, an IllegalStateException will be thrown. It is advisable to only
+     * use this method for objects managed by the SystemManager.
+     */
+    public byte getAvailableCoolant(Context ctx) {
+    	Vessel vessel = getVessel(ctx);
+
+    	if (vessel == null) {
+    		throw new IllegalStateException("Vessel type unknown");
+    	}
+
+    	return vessel.is(VesselAttribute.FIGHTER) ? 0 : mAvailableCoolantOrMissiles;
+    }
+
+    /**
+     * Sets the amount of available coolant in the ship's reserves, if this is a
+     * regular player ship. If this ship is a figher, an
+     * UnsupportedOperationException will be thrown. If the ship's type is
+     * unknown, an IllegalStateException will be thrown. It is advisable to only
+     * use this method for objects managed by the SystemManager.
+     */
+    public void setAvailableCoolant(Context ctx, byte availableCoolant) {
+    	Vessel vessel = getVessel(ctx);
+
+    	if (vessel == null) {
+    		throw new IllegalStateException("Vessel type unknown");
+    	}
+
+    	if (vessel.is(VesselAttribute.FIGHTER)) {
+    		throw new UnsupportedOperationException("Fighters don't have coolant");
+    	}
+
+    	mAvailableCoolantOrMissiles = availableCoolant;
+    }
+
+    /**
+     * Returns the number of missiles on board the fighter, or 0 if this is not
+     * a fighter. If the type of ship is unknown, an IllegalStateException will
+     * be thrown. It is advisable to only use this method for objects managed by
+     * the SystemManager.
+     */
+    public byte getMissiles(Context ctx) {
+    	Vessel vessel = getVessel(ctx);
+
+    	if (vessel == null) {
+    		throw new IllegalStateException("Vessel type unknown");
+    	}
+
+    	return vessel.is(VesselAttribute.FIGHTER) ? mAvailableCoolantOrMissiles : 0;
+    }
+
+    /**
+     * Sets the number of missiles on board the figher. If this ship is not a
+     * figher, an UnsupportedOperationException will be thrown. If the ship's
+     * type is unknown, an IllegalStateException will be thrown. It is advisable
+     * to only use this method for objects managed by the SystemManager.
+     */
+    public void setMissiles(Context ctx, byte missiles) {
+    	Vessel vessel = getVessel(ctx);
+
+    	if (vessel == null) {
+    		throw new IllegalStateException("Vessel type unknown");
+    	}
+
+    	if (!vessel.is(VesselAttribute.FIGHTER)) {
+    		throw new UnsupportedOperationException("Only fighters have missiles");
+    	}
+
+    	mAvailableCoolantOrMissiles = missiles;
     }
 
     /**
@@ -362,8 +611,17 @@ public class ArtemisPlayer extends BaseArtemisShip {
     }
 
     /**
-     * The progress of the current scan, as a value between 0 and 1.
-     * Unspecified: -1
+     * Returns true if this ship has a value for scan progress. This is needed
+     * because sometimes the server transmits NaN.
+     */
+    public boolean hasScanProgress() {
+    	return mHasScanProgress;
+    }
+
+    /**
+     * The progress of the current scan, as a value between 0 and 1. Note that
+     * in some cases, the value can be NaN.
+     * Unspecified: hasScanProgress() == false
      */
     public float getScanProgress() {
         return mScanProgress;
@@ -371,6 +629,7 @@ public class ArtemisPlayer extends BaseArtemisShip {
 
     public void setScanProgress(float scanProgress) {
         mScanProgress = scanProgress;
+        mHasScanProgress = true;
     }
     
     /**
@@ -423,43 +682,89 @@ public class ArtemisPlayer extends BaseArtemisShip {
     }
 
     public void setWarp(byte warp) {
-		mWarp = warp;
+    	if (warp < -1 || warp > Artemis.MAX_WARP) {
+    		throw new IllegalArgumentException("Invalid warp factor: " + warp);
+    	}
+
+    	mWarp = warp;
 	}
+
+    /**
+     * Returns whether the indicated upgrade is active.
+     * Unspecified: UNKNOWN
+     */
+    public BoolState isUpgradeActive(Upgrade upgrade) {
+    	assertUpgradeCanBeActivated(upgrade);
+    	return mUpgrades.get(upgrade).active;
+    }
+
+    public void setUpgradeActive(Upgrade upgrade, boolean active) {
+    	setUpgradeActive(upgrade, BoolState.from(active));
+    }
+
+    public void setUpgradeActive(Upgrade upgrade, BoolState active) {
+    	assertUpgradeCanBeActivated(upgrade);
+    	mUpgrades.get(upgrade).active = active;
+    }
 
     /**
      * Returns the number of upgrades of the indicated type stored on the ship.
      * Unspecified: -1
      */
-    public byte getUpgrades(Upgrade upgrade) {
-    	if (upgrade.getActivatedby() == null) {
-    		throw new IllegalArgumentException(upgrade + " upgrades can't be stored on the ship");
-    	}
-
-    	return mUpgrades[upgrade.ordinal() - 2];
+    public byte getUpgradeCount(Upgrade upgrade) {
+    	assertUpgradeCanBeActivated(upgrade);
+    	return mUpgrades.get(upgrade).count;
     }
 
-    public void setUpgrades(Upgrade upgrade, byte count) {
-    	if (upgrade.getActivatedby() == null) {
-    		throw new IllegalArgumentException(upgrade + " upgrades can't be stored on the ship");
-    	}
-
-    	mUpgrades[upgrade.ordinal() - 2] = count;
+    public void setUpgradeCount(Upgrade upgrade, byte count) {
+    	assertUpgradeCanBeActivated(upgrade);
+    	mUpgrades.get(upgrade).count = count;
     }
 
     /**
-     * Returns this ship's accent color as an ARGB value.
+     * Returns the number of seconds remaining until the given Upgrade expires.
+     * The return value will be undefined if isUpgradeActive() returns FALSE
+     * for this Upgrade.
      * Unspecified: -1
      */
-    public int getAccentColor() {
+    public int getUpgradeSecondsLeft(Upgrade upgrade) {
+    	assertUpgradeCanBeActivated(upgrade);
+    	return mUpgrades.get(upgrade).secondsLeft;
+    }
+
+    public void setUpgradeSecondsLeft(Upgrade upgrade, int secondsLeft) {
+    	assertUpgradeCanBeActivated(upgrade);
+    	mUpgrades.get(upgrade).secondsLeft = secondsLeft;
+    }
+
+    /**
+     * Returns this ship's accent hue as a float value between 0 and 1.
+     * Unspecified: Float.NaN
+     */
+    public float getAccentColor() {
     	return mAccentColor;
     }
 
-    public void setAccentColor(int accentColor) {
+    public void setAccentColor(float accentColor) {
     	mAccentColor = accentColor;
     }
 
     /**
-     * Returns the ID of the capital ship with which this ship can dock. Only applies to fighters.
+     * Returns progress remaining toward being ready to do an emergency jump.
+     * Values range between 0.0 (ready to jump) and 1.0 (just jumped).
+     * Unspecified: Float.NaN
+     */
+    public float getEmergencyJumpCooldown() {
+    	return mEmergencyJumpCooldown;
+    }
+
+    public void setEmergencyJumpCooldown(float emergencyJumpCooldown) {
+    	mEmergencyJumpCooldown = emergencyJumpCooldown;
+    }
+
+    /**
+     * Returns the ID of the capital ship with which this ship can dock. Only
+     * applies to single-seat craft.
      * Unspecified: -1
      */
     public int getCapitalShipId() {
@@ -470,206 +775,401 @@ public class ArtemisPlayer extends BaseArtemisShip {
     	mCapitalShipId = capitalShipId;
     }
 
+    /**
+     * The type of creature the next beacon launched will be configured to affect.
+     */
+    public CreatureType getBeaconType() {
+    	return mBeaconType;
+    }
+
+    public void setBeaconType(CreatureType beaconType) {
+    	mBeaconType = beaconType;
+    }
+
+    /**
+     * The mode for the next launched beacon (attract/repel).
+     */
+    public BeaconMode getBeaconMode() {
+    	return mBeaconMode;
+    }
+
+    public void setBeaconMode(BeaconMode beaconMode) {
+    	mBeaconMode = beaconMode;
+    }
+
+    /**
+     * Returns true if this packet contains data for the given ObjectType.
+     */
+    public boolean hasDataForType(ObjectType type) {
+    	switch (type) {
+    	case PLAYER_SHIP:
+    		return hasPlayerData();
+    	case WEAPONS_CONSOLE:
+    		return hasWeapData();
+    	case ENGINEERING_CONSOLE:
+    		return hasEngData();
+    	case UPGRADES:
+    		return hasUpgradeData();
+    	default:
+    		throw new IllegalArgumentException("ObjectType." + type + " not compatible with ArtemisPlayer");
+    	}
+    }
+
+    /**
+     * Returns true if this object contains any data that is not engineering data or upgrades data.
+     */
+    private boolean hasPlayerData() {
+    	return  super.hasData() ||
+    			mTargetingMode != null ||
+    			mAlertStatus != null ||
+    			BoolState.isKnown(mShields) ||
+    			mShipIndex != Byte.MIN_VALUE ||
+    			!Float.isNaN(mEnergy) ||
+    			mNebulaType != -1 ||
+    			mDockingBase != -1 ||
+    			mMainScreen != null ||
+    			mAvailableCoolantOrMissiles != -1 ||
+    			mWeaponsTarget != -1 ||
+    			mWarp != -1 ||
+    			mBeamFreq != null ||
+    			mDriveType != null ||
+    			BoolState.isKnown(mReverse) ||
+    			!Float.isNaN(mClimbDive) ||
+    			mScienceTarget != -1 ||
+    			mHasScanProgress ||
+    			mCaptainTarget != -1 ||
+    			mScanningId != -1 ||
+    			mCapitalShipId != -1 ||
+    			!Float.isNaN(mAccentColor) ||
+    			!Float.isNaN(mEmergencyJumpCooldown) ||
+    			mBeaconType != null ||
+    			mBeaconMode != null;
+    }
+
+    /**
+     * Returns true if this object contains any weapons data (ordnance counts or tube status). 
+     */
+    private boolean hasWeapData() {
+        for (int i = 0; i < OrdnanceType.COUNT; i++) {
+        	if (mTorpedos[i] != -1) {
+        		return true;
+        	}
+        }
+
+        for (Tube tube : mTubes) {
+        	if (tube.hasData()) {
+        		return true;
+        	}
+        }
+
+        return false;
+    }
+
+    /**
+     * Returns true if this object contains any engineering data (systems energy, heat, or
+     * coolant).
+     */
+    private boolean hasEngData() {
+    	for (SystemStatus status : mSystems) {
+    		if (status.hasData()) {
+    			return true;
+    		}
+    	}
+
+    	return false;
+    }
+
+    /**
+     * Returns true if this object contains any upgrades data.
+     */
+    private boolean hasUpgradeData() {
+    	for (UpgradeStatus status : mUpgrades.values()) {
+    		if (status.hasData()) {
+    			return true;
+    		}
+    	}
+
+    	return false;
+    }
+
     @Override
-    public void updateFrom(ArtemisObject obj, Context ctx) {
-        super.updateFrom(obj, ctx);
+    public void updateFrom(ArtemisObject obj) {
+        super.updateFrom(obj);
         
-        // it should be!
         if (obj instanceof ArtemisPlayer) {
             ArtemisPlayer plr = (ArtemisPlayer) obj;
+            updatePlayerFrom(plr);
+            updateWeapFrom(plr);
+            updateEngFrom(plr);
+            updateUpgradesFrom(plr);
+        }
+    }
 
-            if (mShipNumber == -1) {
-                mShipNumber = plr.mShipNumber;
-            }
-            
-            if (plr.mTargetingMode != null) {
-            	mTargetingMode = plr.mTargetingMode;
-            }
+    /**
+     * Splits this object into separate objects based on the data it contains for each ObjectType.
+     * The resulting Map will contain between zero and four ArtemisPlayer objects, each mapped to
+     * their corresponding ObjectType.
+     */
+    public Map<ObjectType, ArtemisPlayer> split() {
+    	Map<ObjectType, ArtemisPlayer> map = new LinkedHashMap<ObjectType, ArtemisPlayer>();
 
-            if (plr.mWeaponsTarget != -1) {
-                mWeaponsTarget = plr.mWeaponsTarget;
-            }
+    	if (hasPlayerData()) {
+    		ArtemisPlayer part = new ArtemisPlayer(mId);
+    		part.superUpdateFrom(this);
+    		part.updatePlayerFrom(this);
+    		map.put(ObjectType.PLAYER_SHIP, part);
+    	}
 
-            if (plr.mWarp != -1) {
-            	mWarp = plr.mWarp;
-            }
+    	if (hasWeapData()) {
+    		ArtemisPlayer part = new ArtemisPlayer(mId);
+    		part.superUpdateFrom(this);
+    		part.updateWeapFrom(this);
+    		map.put(ObjectType.WEAPONS_CONSOLE, part);
+    	}
 
-            if (plr.mDockingBase != -1) {
-                mDockingBase = plr.mDockingBase;
-            } else if (plr.getImpulse() != -1 || plr.mWarp != -1) {
-            	mDockingBase = 0;
-            }
+    	if (hasEngData()) {
+    		ArtemisPlayer part = new ArtemisPlayer(mId);
+    		part.superUpdateFrom(this);
+    		part.updateEngFrom(this);
+    		map.put(ObjectType.ENGINEERING_CONSOLE, part);
+    	}
 
-            if (plr.mBeamFreq != null) {
-            	mBeamFreq = plr.mBeamFreq;
-            }
+    	if (hasUpgradeData()) {
+    		ArtemisPlayer part = new ArtemisPlayer(mId);
+    		part.superUpdateFrom(this);
+    		part.updateUpgradesFrom(this);
+    		map.put(ObjectType.UPGRADES, part);
+    	}
 
-            if (plr.mAlertStatus != null) {
-            	mAlertStatus = plr.mAlertStatus;
-            }
+    	return map;
+    }
 
-            if (BoolState.isKnown(plr.mShields)) {
-                mShields = plr.mShields;
-            }
+    /**
+     * Invokes the superclass's updateFrom() method. Used by split().
+     */
+    private void superUpdateFrom(ArtemisObject obj) {
+        super.updateFrom(obj);
+    }
 
-            if (plr.mEnergy != -1) {
-                mEnergy = plr.mEnergy;
-            }
-            
-            if (plr.mAvailableCoolant != -1) {
-                mAvailableCoolant = plr.mAvailableCoolant;
-            }
-            
-            if (plr.mDriveType != null) {
-                mDriveType = plr.mDriveType;
-            }
-            
-            for (int i = 0; i < Artemis.SYSTEM_COUNT; i++) {
-                if (plr.mHeat[i] != -1) {
-                    mHeat[i] = plr.mHeat[i];
-                }
-                
-                if (plr.mSystems[i] != -1) {
-                    mSystems[i] = plr.mSystems[i];
-                }
-                
-                if (plr.mCoolant[i] != -1) {
-                    mCoolant[i] = plr.mCoolant[i];
-                }
-            }
+    /**
+     * Updates only data from the given ArtemisPlayer object that is not weapons, engineering or
+     * upgrades data.
+     */
+    public void updatePlayerFrom(ArtemisPlayer plr) {
+        if (plr.mShipIndex != Byte.MIN_VALUE) {
+            mShipIndex = plr.mShipIndex;
+        }
 
-            for (int i=0; i < OrdnanceType.COUNT; i++) {
-                if (plr.mTorpedos[i] != -1) {
-                    mTorpedos[i] = plr.mTorpedos[i];
-                }
+        if (plr.mTargetingMode != null) {
+        	mTargetingMode = plr.mTargetingMode;
+        }
+
+        if (plr.mWeaponsTarget != -1) {
+            mWeaponsTarget = plr.mWeaponsTarget;
+        }
+
+        if (plr.mWarp != -1) {
+        	mWarp = plr.mWarp;
+        }
+
+        if (plr.mDockingBase != -1) {
+            mDockingBase = plr.mDockingBase;
+        } else if (plr.getImpulse() != -1 || plr.mWarp != -1) {
+        	mDockingBase = 0;
+        }
+
+        if (plr.mBeamFreq != null) {
+        	mBeamFreq = plr.mBeamFreq;
+        }
+
+        if (plr.mAlertStatus != null) {
+        	mAlertStatus = plr.mAlertStatus;
+        }
+
+        if (BoolState.isKnown(plr.mShields)) {
+            mShields = plr.mShields;
+        }
+
+        if (!Float.isNaN(plr.mEnergy)) {
+            mEnergy = plr.mEnergy;
+        }
+
+        if (plr.mNebulaType != -1) {
+        	mNebulaType = plr.mNebulaType;
+        }
+
+        if (plr.mAvailableCoolantOrMissiles != -1) {
+            mAvailableCoolantOrMissiles = plr.mAvailableCoolantOrMissiles;
+        }
+        
+        if (plr.mDriveType != null) {
+            mDriveType = plr.mDriveType;
+        }
+        
+        if (plr.mMainScreen != null) {
+            mMainScreen = plr.mMainScreen;
+        }
+        
+        if (BoolState.isKnown(plr.mReverse)) {
+            mReverse = plr.mReverse;
+        }
+        
+        if (!Float.isNaN(plr.mClimbDive)) {
+        	mClimbDive = plr.mClimbDive;
+        }
+
+        if (plr.mScienceTarget != -1) {
+            mScienceTarget = plr.mScienceTarget;
+        }
+
+        if (plr.mHasScanProgress) {
+            mScanProgress = plr.mScanProgress;
+            mHasScanProgress = true;
+        }
+
+        if (plr.mCaptainTarget != -1) {
+            mCaptainTarget = plr.mCaptainTarget;
+        }
+
+        if (plr.mScanningId != -1) {
+            mScanningId = plr.mScanningId;
+        }
+
+        if (plr.mCapitalShipId != -1) {
+        	mCapitalShipId = plr.mCapitalShipId;
+        }
+
+        if (!Float.isNaN(plr.mAccentColor)) {
+        	mAccentColor = plr.mAccentColor;
+        }
+
+        if (!Float.isNaN(plr.mEmergencyJumpCooldown)) {
+        	mEmergencyJumpCooldown = plr.mEmergencyJumpCooldown;
+        }
+
+        if (plr.mBeaconType != null) {
+        	mBeaconType = plr.mBeaconType;
+        }
+
+        if (plr.mBeaconMode != null) {
+        	mBeaconMode = plr.mBeaconMode;
+        }
+    }
+
+    /**
+     * Updates only weapons data from the given ArtemisPlayer object.
+     */
+    public void updateWeapFrom(ArtemisPlayer plr) {
+        for (int i=0; i < OrdnanceType.COUNT; i++) {
+            if (plr.mTorpedos[i] != -1) {
+                mTorpedos[i] = plr.mTorpedos[i];
             }
+        }
 
-            for (int i = 0; i < Artemis.MAX_TUBES; i++) {
-            	float time = plr.mTubeTimes[i];
+        for (int i = 0; i < Artemis.MAX_TUBES; i++) {
+        	mTubes[i].updateFrom(plr.mTubes[i]);
+        }
+    }
 
-            	if (time >= 0) {
-                	mTubeTimes[i] = time < 0.05f ? 0 : time;
-                }
+    /**
+     * Updates only engineering data from the given ArtemisPlayer object.
+     */
+    public void updateEngFrom(ArtemisPlayer plr) {
+        for (int i = 0; i < Artemis.SYSTEM_COUNT; i++) {
+        	mSystems[i].updateFrom(plr.mSystems[i]);
+        }
+    }
 
-                TubeState state = plr.mTubeState[i];
-
-                if (state != null) {
-                	mTubeState[i] = state;
-                }
-
-                byte contents = plr.mTubeContents[i];
-
-                if (contents != -1) {
-                	mTubeContents[i] = contents;
-                } else if (state == TubeState.UNLOADED) {
-                	mTubeContents[i] = 0;
-                }
-            }
-
-            if (plr.mMainScreen != null) {
-                mMainScreen = plr.mMainScreen;
-            }
-            
-            if (BoolState.isKnown(plr.mReverse)) {
-                mReverse = plr.mReverse;
-            }
-            
-            if (plr.mScienceTarget != -1) {
-                mScienceTarget = plr.mScienceTarget;
-            }
-
-            if (plr.mScanProgress != -1) {
-                mScanProgress = plr.mScanProgress;
-            }
-
-            if (plr.mCaptainTarget != -1) {
-                mCaptainTarget = plr.mCaptainTarget;
-            }
-
-            if (plr.mScanningId != -1) {
-                mScanningId = plr.mScanningId;
-            }
-
-            for (int i = 0; i < mUpgrades.length; i++) {
-            	byte upgrade = plr.mUpgrades[i];
-
-            	if (upgrade >= 0) {
-            		mUpgrades[i] = upgrade;
-            	}
-            }
-
-            if (plr.mAccentColor != -1) {
-            	mAccentColor = plr.mAccentColor;
-            }
-
-            if (plr.mCapitalShipId != -1) {
-            	mCapitalShipId = plr.mCapitalShipId;
-            }
+    /**
+     * Updates only upgrades data from the given ArtemisPlayer object.
+     */
+    public void updateUpgradesFrom(ArtemisPlayer plr) {
+        for (Upgrade upgrade : Upgrade.activation()) {
+        	mUpgrades.get(upgrade).updateFrom(plr.mUpgrades.get(upgrade));
         }
     }
 
     @Override
-	public void appendObjectProps(SortedMap<String, Object> props, boolean includeUnspecified) {
-    	super.appendObjectProps(props, includeUnspecified);
-    	putProp(props, "Targeting mode", mTargetingMode, includeUnspecified);
-    	putProp(props, "Alert status", mAlertStatus, includeUnspecified);
-    	putProp(props, "Shield state", mShields, includeUnspecified);
-    	putProp(props, "Player ship number", mShipNumber, -1, includeUnspecified);
+	public void appendObjectProps(SortedMap<String, Object> props) {
+    	super.appendObjectProps(props);
+    	putProp(props, "Targeting mode", mTargetingMode);
+    	putProp(props, "Alert status", mAlertStatus);
+    	putProp(props, "Shield state", mShields);
+    	putProp(props, "Ship index", mShipIndex, Byte.MIN_VALUE);
 
     	for (ShipSystem system : ShipSystem.values()) {
     		int i = system.ordinal();
-    		putProp(props, "System heat: " + system, mHeat[i], -1, includeUnspecified);
-    		putProp(props, "System energy: " + system, mSystems[i], -1, includeUnspecified);
-    		putProp(props, "System coolant: " + system, mCoolant[i], -1, includeUnspecified);
+    		putProp(props, "System heat: " + system, mSystems[i].heat);
+    		putProp(props, "System energy: " + system, mSystems[i].energy);
+    		putProp(props, "System coolant: " + system, mSystems[i].coolant, -1);
     	}
 
     	OrdnanceType[] ordValues = OrdnanceType.values();
 
     	for (OrdnanceType ordnanceType : ordValues) {
     		int i = ordnanceType.ordinal();
-    		putProp(props, "Ordnance count: " + ordnanceType, mTorpedos[i], -1, includeUnspecified);
+    		putProp(props, "Ordnance count: " + ordnanceType, mTorpedos[i], -1);
     	}
 
     	for (int i = 0; i < Artemis.MAX_TUBES; i++) {
-    		TubeState state = mTubeState[i];
-    		int contents = mTubeContents[i];
-    		putProp(props, "Tube " + i + " state", state, includeUnspecified);
-    		String contentsStr;
+    		Tube tube = mTubes[i];
+    		putProp(props, "Tube " + i + " state", tube.state);
 
-    		if (state != null && contents != -1) {
-    			if (state == TubeState.UNLOADED) {
+    		if (tube.state != null && tube.contents != -1) {
+        		String contentsStr;
+
+        		if (tube.state == TubeState.UNLOADED) {
     				contentsStr = "EMPTY";
     			} else {
-    				contentsStr = ordValues[contents].name();
+    				contentsStr = ordValues[tube.contents].name();
     			}
 
-    			putProp(props, "Tube " + i + " contents", contentsStr, includeUnspecified);
+    			putProp(props, "Tube " + i + " contents", contentsStr);
     		}
 
-    		putProp(props, "Tube " + i + " countdown", mTubeTimes[i], -1, includeUnspecified);
+    		putProp(props, "Tube " + i + " countdown", tube.secondsLeft);
     	}
 
-    	putProp(props, "Energy", mEnergy, -1, includeUnspecified);
-    	putProp(props, "Docking base", mDockingBase, -1, includeUnspecified);
-    	putProp(props, "Main screen view", mMainScreen, includeUnspecified);
-    	putProp(props, "Coolant", mAvailableCoolant, -1, includeUnspecified);
-    	putProp(props, "Warp", mWarp, -1, includeUnspecified);
-    	putProp(props, "Beam frequency", mBeamFreq, includeUnspecified);
-    	putProp(props, "Drive type", mDriveType, includeUnspecified);
-    	putProp(props, "Reverse", mReverse, includeUnspecified);
-    	putProp(props, "Scan target", mScienceTarget, -1, includeUnspecified);
-    	putProp(props, "Scan progress", mScanProgress, -1, includeUnspecified);
-    	putProp(props, "Scan object ID", mScanningId, -1, includeUnspecified);
-    	putProp(props, "Weapons target", mWeaponsTarget, -1, includeUnspecified);
-    	putProp(props, "Captain target", mCaptainTarget, -1, includeUnspecified);
-    	Upgrade[] upgradeTypes = Upgrade.getStorableUpgrades();
+    	putProp(props, "Energy", mEnergy);
+    	putProp(props, "Nebula type", mNebulaType, -1);
+    	putProp(props, "Docking base", mDockingBase, -1);
+    	putProp(props, "Main screen view", mMainScreen);
+    	putProp(props, "Coolant", mAvailableCoolantOrMissiles, -1);
+    	putProp(props, "Warp", mWarp, -1);
+    	putProp(props, "Beam frequency", mBeamFreq);
+    	putProp(props, "Drive type", mDriveType);
+    	putProp(props, "Climb/dive", mClimbDive);
+    	putProp(props, "Reverse", mReverse);
+    	putProp(props, "Scan target", mScienceTarget, -1);
 
-    	for (int i = 0; i < mUpgrades.length; i++) {
-    		Upgrade upgradeType = upgradeTypes[i];
-        	putProp(props, "Upgrades: " + upgradeType, mUpgrades[i], -1, includeUnspecified);
-        }
+    	if (mHasScanProgress) {
+    		putProp(props, "Scan progress", mScanProgress);
+    	}
 
-    	putProp(props, "Capital ship ID", mCapitalShipId, -1, includeUnspecified);
-    	putProp(props, "Accent color", mAccentColor, -1, includeUnspecified);
+    	putProp(props, "Scan object ID", mScanningId, -1);
+    	putProp(props, "Weapons target", mWeaponsTarget, -1);
+    	putProp(props, "Captain target", mCaptainTarget, -1);
+
+    	for (Upgrade upgrade : Upgrade.activation()) {
+    		UpgradeStatus status = mUpgrades.get(upgrade);
+        	putProp(props, "Upgrades: " + upgrade + ": active", status.active);
+        	putProp(props, "Upgrades: " + upgrade + ": count", status.count, -1);
+        	putProp(props, "Upgrades: " + upgrade + ": time", status.secondsLeft, -1);
+    	}
+
+    	putProp(props, "Capital ship ID", mCapitalShipId, -1);
+    	putProp(props, "Accent color", mAccentColor);
+    	putProp(props, "Emergency jump cooldown", mEmergencyJumpCooldown);
+    	putProp(props, "Beacon type", mBeaconType);
+    	putProp(props, "Beacon mode", mBeaconMode);
+    }
+
+    /**
+     * Throws an IllegalArgumentException if the given Upgrade can't be activated.
+     */
+    private void assertUpgradeCanBeActivated(Upgrade upgrade) {
+    	if (upgrade.getActivationIndex() == null) {
+    		throw new IllegalArgumentException(upgrade + " upgrades can't be stored on the ship");
+    	}
     }
 }

@@ -1,75 +1,55 @@
 package com.walkertribe.ian.protocol.core.comm;
 
-import com.walkertribe.ian.enums.ConnectionType;
-import com.walkertribe.ian.iface.PacketFactory;
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
+import java.util.Set;
+
+import com.walkertribe.ian.enums.CommFilter;
+import com.walkertribe.ian.enums.Origin;
 import com.walkertribe.ian.iface.PacketReader;
 import com.walkertribe.ian.iface.PacketWriter;
-import com.walkertribe.ian.protocol.ArtemisPacket;
-import com.walkertribe.ian.protocol.ArtemisPacketException;
 import com.walkertribe.ian.protocol.BaseArtemisPacket;
+import com.walkertribe.ian.protocol.Packet;
+import com.walkertribe.ian.protocol.core.CorePacketType;
+import com.walkertribe.ian.util.Util;
 
 /**
  * Received when an incoming COMMs message arrives.
  */
+@Packet(origin = Origin.SERVER, type = CorePacketType.COMM_TEXT)
 public class CommsIncomingPacket extends BaseArtemisPacket {
-	public static final int MIN_PRIORITY_VALUE = 0;
-	public static final int MAX_PRIORITY_VALUE = 8;
 
-	private static final int TYPE = 0xD672C35F;
+    private final Set<CommFilter> mFilters;
+    private final CharSequence mFrom;
+    private final CharSequence mMessage;
 
-	public static void register(PacketFactoryRegistry registry) {
-		registry.register(ConnectionType.SERVER, TYPE, new PacketFactory() {
-			@Override
-			public Class<? extends ArtemisPacket> getFactoryClass() {
-				return CommsIncomingPacket.class;
-			}
-
-			@Override
-			public ArtemisPacket build(PacketReader reader)
-					throws ArtemisPacketException {
-				return new CommsIncomingPacket(reader);
-			}
-		});
-	}
-
-    private final int mPriority;
-    private final String mFrom;
-    private final String mMessage;
-
-    private CommsIncomingPacket(PacketReader reader) {
-        super(ConnectionType.SERVER, TYPE);
-        mPriority = reader.readInt();
+    public CommsIncomingPacket(PacketReader reader) {
+    	mFilters = CommFilter.fromInt(reader.readShort());
         mFrom = reader.readString();
-        mMessage = reader.readString().replace('^', '\n');
+        mMessage = Util.caratToNewline(reader.readString());
     }
 
-    public CommsIncomingPacket(int priority, String from, String message) {
-    	super(ConnectionType.SERVER, TYPE);
-
-    	if (priority < MIN_PRIORITY_VALUE || priority > MAX_PRIORITY_VALUE) {
-    		throw new IllegalArgumentException("Invalid priority: " + priority);
+    public CommsIncomingPacket(Set<CommFilter> filters, CharSequence from, CharSequence message) {
+    	if (filters == null) {
+    		throw new IllegalArgumentException("You must provide a filter Set");
     	}
 
-    	if (from == null || from.length() == 0) {
+    	if (Util.isBlank(from)) {
     		throw new IllegalArgumentException("You must provide a sender name");
     	}
 
-    	if (message == null || message.length() == 0) {
+    	if (Util.isBlank(message)) {
     		throw new IllegalArgumentException("You must provide a message");
     	}
 
-    	mPriority = priority;
+    	mFilters = filters;
     	mFrom = from;
     	mMessage = message;
     }
 
     /**
-     * Returns the message priority, with lower values having higher priority.
-     * @return An integer between 0 and 8, inclusive
+     * Returns true if this message matches the given CommFilter.
      */
-    public int getPriority() {
-        return mPriority;
+    public boolean matches(CommFilter filter) {
+        return mFilters.contains(filter);
     }
 
     /**
@@ -78,26 +58,26 @@ public class CommsIncomingPacket extends BaseArtemisPacket {
      * have additional detail after the entity's name ("DS3 TSN Base"). Messages
      * in scripted scenarios can have any String for the sender.
      */
-    public String getFrom() {
+    public CharSequence getFrom() {
         return mFrom;
     }
 
     /**
      * The content of the message.
      */
-    public String getMessage() {
+    public CharSequence getMessage() {
         return mMessage;
     }
 
 	@Override
 	protected void writePayload(PacketWriter writer) {
-		writer.writeInt(mPriority);
+		writer.writeShort(CommFilter.toInt(mFilters));
 		writer.writeString(mFrom);
-		writer.writeString(mMessage.replace('\n', '^'));
+		writer.writeString(Util.newlineToCarat(mMessage));
 	}
 
 	@Override
 	protected void appendPacketDetail(StringBuilder b) {
-		b.append("from ").append(mFrom).append(": ").append(mMessage);
+		b.append("from ").append(mFrom).append(": ").append(getMessage());
 	}
 }

@@ -1,14 +1,14 @@
 package com.walkertribe.ian.protocol.core;
 
-import com.walkertribe.ian.iface.PacketFactoryRegistry;
 import com.walkertribe.ian.protocol.AbstractProtocol;
+import com.walkertribe.ian.protocol.ArtemisPacket;
 import com.walkertribe.ian.protocol.core.comm.*;
 import com.walkertribe.ian.protocol.core.eng.*;
-import com.walkertribe.ian.protocol.core.fighter.*;
 import com.walkertribe.ian.protocol.core.gm.*;
 import com.walkertribe.ian.protocol.core.helm.*;
 import com.walkertribe.ian.protocol.core.sci.*;
 import com.walkertribe.ian.protocol.core.setup.*;
+import com.walkertribe.ian.protocol.core.singleseat.*;
 import com.walkertribe.ian.protocol.core.weap.*;
 import com.walkertribe.ian.protocol.core.world.*;
 
@@ -18,87 +18,105 @@ import com.walkertribe.ian.protocol.core.world.*;
  */
 public class CoreArtemisProtocol extends AbstractProtocol {
 	// The packet classes supported by this Protocol
-	private static final Class<?>[] PACKET_CLASSES = {
-			// server classes
-			// -- prioritized
-			ObjectUpdatePacket.class,
-			BeamFiredPacket.class,
-			EngGridUpdatePacket.class,
-			IntelPacket.class,
-			SoundEffectPacket.class,
-			// -- rest
+	private static final Class<?>[] CLASSES = {
+			// server packets
 			AllShipSettingsPacket.class,
-			EngAutoDamconUpdatePacket.class,
+			BayStatusPacket.class,
+			BeamFiredPacket.class,
+			CloakDecloakPacket.class,
+			CommsButtonPacket.class,
 			CommsIncomingPacket.class,
 			ConsoleStatusPacket.class,
 			DmxMessagePacket.class,
-			DestroyObjectPacket.class,
-			DifficultyPacket.class,
-			FighterBayStatusPacket.class,
-			FighterLaunchedPacket.class,
+			DeleteObjectPacket.class,
+			DockedPacket.class,
+			EndGamePacket.class,
+			EngAutoDamconUpdatePacket.class,
+			EngGridUpdatePacket.class,
+			ExplosionPacket.class,
 			GameMasterButtonPacket.class,
 			GameMasterInstructionsPacket.class,
 			GameMessagePacket.class,
 			GameOverPacket.class,
 			GameOverReasonPacket.class,
 			GameOverStatsPacket.class,
+			GameStartPacket.class,
+			HeartbeatPacket.class,
+			IdleTextPacket.class,
 			IncomingAudioPacket.class,
-			JumpStatusPacket.class,
+			IntelPacket.class,
+			JumpBeginPacket.class,
+			JumpEndPacket.class,
 			KeyCaptureTogglePacket.class,
+			KlaxonPacket.class,
+			ObjectUpdatePacket.class,
 			PausePacket.class,
 			PerspectivePacket.class,
 			PlayerShipDamagePacket.class,
+			SingleSeatLaunchedPacket.class,
+			SingleSeatTextPacket.class,
 			SkyboxPacket.class,
+			SmokePacket.class,
+			SoundEffectPacket.class,
+			TagPacket.class,
+			TitlePacket.class,
 			VersionPacket.class,
 			WelcomePacket.class,
 
-			// client classes
-			// -- prioritized
-			ToggleShieldsPacket.class,
-			FireBeamPacket.class,
-			FireTubePacket.class,
-			ToggleAutoBeamsPacket.class,
-			SetWeaponsTargetPacket.class,
-			LoadTubePacket.class,
-			HelmSetSteeringPacket.class,
-			HelmSetWarpPacket.class,
-			HelmJumpPacket.class,
-			EngSetCoolantPacket.class,
-			EngSetEnergyPacket.class,
-			HelmSetImpulsePacket.class,
-			HelmRequestDockPacket.class,
-			FighterLaunchPacket.class,
-			// -- rest
+			// client packets
+			ActivateUpgradePacket.class,
 			AudioCommandPacket.class,
-			CaptainSelectPacket.class,
+			BeaconConfigPacket.class,
+			CaptainTargetPacket.class,
 			ClimbDivePacket.class,
 			CommsOutgoingPacket.class,
 			ConvertTorpedoPacket.class,
+			EngRequestGridUpdatePacket.class,
+			EngResetCoolantPacket.class,
 			EngSendDamconPacket.class,
 			EngSetAutoDamconPacket.class,
-			GameMasterButtonClickPacket.class,
+			EngSetCoolantPacket.class,
+			EngSetEnergyPacket.class,
+			FireBeamPacket.class,
+			FireTubePacket.class,
+			ButtonClickPacket.class,
 			GameMasterMessagePacket.class,
-			GameMasterSelectLocationPacket.class,
-			GameMasterSelectObjectPacket.class,
+			GameMasterTargetLocationPacket.class,
+			GameMasterTargetObjectPacket.class,
+			HelmEmergencyJumpPacket.class,
+			HelmJumpPacket.class,
+			HelmRequestDockPacket.class,
 			HelmSetClimbDivePacket.class,
+			HelmSetImpulsePacket.class,
+			HelmSetSteeringPacket.class,
+			HelmSetWarpPacket.class,
 			HelmToggleReversePacket.class,
 			KeystrokePacket.class,
+			LoadTubePacket.class,
 			ReadyPacket.class,
-			ReadyPacket2.class,
 			SciScanPacket.class,
-			SciSelectPacket.class,
+			SciTargetPacket.class,
 			SetBeamFreqPacket.class,
+			SetConsolePacket.class,
 			SetMainScreenPacket.class,
+			SetShieldsPacket.class,
 			SetShipPacket.class,
 			SetShipSettingsPacket.class,
-			SetConsolePacket.class,
+			SetSingleSeatSettingsPacket.class,
+			SingleSeatLaunchPacket.class,
+			SingleSeatPilotPacket.class,
+			SingleSeatShootPacket.class,
+			ToggleAutoBeamsPacket.class,
 			TogglePerspectivePacket.class,
 			ToggleRedAlertPacket.class,
+			WeaponsTargetPacket.class,
 			UnloadTubePacket.class
 	};
 
-	@Override
-	public void registerPacketFactories(PacketFactoryRegistry registry) {
-		registerPacketFactories(registry, PACKET_CLASSES);
+	@SuppressWarnings("unchecked")
+	public CoreArtemisProtocol() {
+		for (Class<?> clazz : CLASSES) {
+			register((Class<? extends ArtemisPacket>) clazz);
+		}
 	}
 }
